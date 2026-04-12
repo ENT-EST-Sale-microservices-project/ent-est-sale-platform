@@ -1,0 +1,98 @@
+# ------------------------------
+# OS / Editor
+# ------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ------------------------------
+# Python
+# ------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ------------------------------
+# Node / Frontend
+# ------------------------------
+node_modules/
+dist/
+build/
+.npm/
+.pnpm-store/
+.nx/
+.next/
+.nuxt/
+.svelte-kit/
+coverage/
+
+# ------------------------------
+# Logs / temp
+# ------------------------------
+*.log
+*.pid
+*.seed
+*.out
+*.err
+*.tmp
+*.temp
+.cache/
+tmp/
+
+# ------------------------------
+# Environment / Secrets
+# ------------------------------
+.env
+.env.*
+!.env.example
+!.env.template
+infra/.env
+infra/.env.*
+!infra/.env.example
+**/secrets/**
+**/*.pem
+**/*.key
+**/*.crt
+**/*.p12
+**/*.jks
+
+# ------------------------------
+# Containers / K8s local data
+# ------------------------------
+*.local
+kind.kubeconfig
+kubeconfig*
+
+# ------------------------------
+# Terraform (if added later)
+# ------------------------------
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+.terraform.lock.hcl
+
+# ------------------------------
+# Misc binary artifacts
+# ------------------------------
+*.zip
+*.tar
+*.gz
+*.7z
+*.exe
+*.dll
+*.class
