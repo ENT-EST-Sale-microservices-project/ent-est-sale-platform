@@ -56,7 +56,7 @@ jobs:
           export CASSANDRA_PASSWORD
           export KC_COMMAND=start-dev
 
-            render_and_validate() {
+          render_and_validate() {
             local file="$1"
             local vars="$2"
             local out="/tmp/$(basename "$file").rendered.yaml"
@@ -64,44 +64,35 @@ jobs:
 
             # Fail if unresolved placeholders remain after rendering.
             if grep -q '\${[A-Za-z_][A-Za-z0-9_]*}' "$out"; then
-              echo "Unresolved template variable(s) in $file"
-              grep -n '\${[A-Za-z_][A-Za-z0-9_]*}' "$out"
-              exit 1
+              local unresolved
+              unresolved="$(grep -n '\${[A-Za-z_][A-Za-z0-9_]*}' "$out" || true)"
+
+              # In keycloak realm bootstrap script, these are runtime shell vars
+              # intentionally kept for the Job container.
+              if [[ "$file" == "infra/manifests/keycloak/realm-import-job.yaml" ]]; then
+                unresolved="$(printf '%s\n' "$unresolved" | grep -vE '\$\{(KEYCLOAK_ADMIN|KEYCLOAK_PASSWORD|ACCESS_TOKEN)\}' || true)"
+              fi
+
+              # In cassandra manifest, these are runtime shell vars in container scripts.
+              if [[ "$file" == "infra/manifests/cassandra/cassandra.yaml" ]]; then
+                unresolved="$(printf '%s\n' "$unresolved" | grep -vE '\$\{(CASSANDRA_NEW_PASSWORD|i)\}' || true)"
+              fi
+
+              if [[ -n "$unresolved" ]]; then
+                echo "Unresolved template variable(s) in $file"
+                printf '%s\n' "$unresolved"
+                exit 1
+              fi
             fi
 
             # Offline YAML syntax validation (no Kubernetes API required).
-            python - "$out" <<'PY'
-      import sys
-      from pathlib import Path
-      import yaml
-
-      path = Path(sys.argv[1])
-      content = path.read_text(encoding="utf-8")
-      try:
-        docs = list(yaml.safe_load_all(content))
-      except Exception as exc:
-        print(f"YAML parse failed for {path}: {exc}")
-        raise
-
-      if not docs:
-        raise SystemExit(f"No YAML document found in {path}")
-
-      for idx, doc in enumerate(docs, start=1):
-        if doc is None:
-          continue
-        if not isinstance(doc, dict):
-          raise SystemExit(f"Document #{idx} in {path} is not a mapping/object")
-        for key in ("apiVersion", "kind"):
-          if key not in doc:
-            raise SystemExit(f"Document #{idx} in {path} missing required key: {key}")
-      print(f"OK: {path}")
-      PY
+            python -c 'import sys,yaml; from pathlib import Path; p=Path(sys.argv[1]); docs=list(yaml.safe_load_all(p.read_text(encoding="utf-8"))); docs or (_ for _ in ()).throw(SystemExit(f"No YAML document found in {p}")); [((doc is None) or isinstance(doc, dict) or (_ for _ in ()).throw(SystemExit(f"Document #{idx} in {p} is not a mapping/object")), (doc is None) or ("apiVersion" in doc) or (_ for _ in ()).throw(SystemExit(f"Document #{idx} in {p} missing required key: apiVersion")), (doc is None) or ("kind" in doc) or (_ for _ in ()).throw(SystemExit(f"Document #{idx} in {p} missing required key: kind"))) for idx, doc in enumerate(docs, 1)]; print(f"OK: {p}")' "$out"
           }
 
-            render_and_validate infra/manifests/namespaces.yaml '${PLATFORM_NS} ${APPS_NS} ${OBS_NS} ${TRAEFIK_NS}'
-            render_and_validate infra/manifests/keycloak/postgres.yaml '${PLATFORM_NS} ${KEYCLOAK_PASSWORD}'
-            render_and_validate infra/manifests/keycloak/keycloak.yaml '${PLATFORM_NS} ${KEYCLOAK_ADMIN} ${KEYCLOAK_PASSWORD} ${KC_COMMAND}'
-            render_and_validate infra/manifests/keycloak/realm-import-job.yaml '${PLATFORM_NS}'
-            render_and_validate infra/manifests/rabbitmq/rabbitmq-cluster.yaml '${PLATFORM_NS} ${RABBITMQ_USER} ${RABBITMQ_PASSWORD}'
-            render_and_validate infra/manifests/cassandra/cassandra.yaml '${PLATFORM_NS} ${CASSANDRA_PASSWORD}'
-            render_and_validate infra/manifests/ingress/keycloak-ingress.yaml '${PLATFORM_NS}'
+          render_and_validate infra/manifests/namespaces.yaml '${PLATFORM_NS} ${APPS_NS} ${OBS_NS} ${TRAEFIK_NS}'
+          render_and_validate infra/manifests/keycloak/postgres.yaml '${PLATFORM_NS} ${KEYCLOAK_PASSWORD}'
+          render_and_validate infra/manifests/keycloak/keycloak.yaml '${PLATFORM_NS} ${KEYCLOAK_ADMIN} ${KEYCLOAK_PASSWORD} ${KC_COMMAND}'
+          render_and_validate infra/manifests/keycloak/realm-import-job.yaml '${PLATFORM_NS}'
+          render_and_validate infra/manifests/rabbitmq/rabbitmq-cluster.yaml '${PLATFORM_NS} ${RABBITMQ_USER} ${RABBITMQ_PASSWORD}'
+          render_and_validate infra/manifests/cassandra/cassandra.yaml '${PLATFORM_NS} ${CASSANDRA_PASSWORD}'
+          render_and_validate infra/manifests/ingress/keycloak-ingress.yaml '${PLATFORM_NS}'
