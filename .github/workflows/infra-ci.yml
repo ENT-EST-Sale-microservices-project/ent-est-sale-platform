@@ -1,0 +1,67 @@
+name: infra-ci
+
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra-ci.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra-ci.yml'
+
+jobs:
+  lint-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck bootstrap script
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './infra/bootstrap'
+
+  lint-yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: YAML lint
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: 'infra/manifests infra/values infra/cluster'
+          strict: false
+
+  render-validate-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+      - name: Install envsubst
+        run: sudo apt-get update && sudo apt-get install -y gettext-base
+      - name: Render and validate manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          source infra/.env.example
+          export PLATFORM_NS APPS_NS OBS_NS TRAEFIK_NS
+          export KEYCLOAK_ADMIN KEYCLOAK_PASSWORD
+          export RABBITMQ_USER RABBITMQ_PASSWORD
+          export MINIO_ROOT_USER MINIO_ROOT_PASSWORD
+          export CASSANDRA_PASSWORD
+          export KC_COMMAND=start-dev
+
+          render_apply() {
+            local file="$1"
+            local vars="$2"
+            envsubst "$vars" < "$file" > /tmp/rendered.yaml
+            kubectl apply --dry-run=client -f /tmp/rendered.yaml >/dev/null
+          }
+
+          render_apply infra/manifests/namespaces.yaml '${PLATFORM_NS} ${APPS_NS} ${OBS_NS} ${TRAEFIK_NS}'
+          render_apply infra/manifests/keycloak/postgres.yaml '${PLATFORM_NS} ${KEYCLOAK_PASSWORD}'
+          render_apply infra/manifests/keycloak/keycloak.yaml '${PLATFORM_NS} ${KEYCLOAK_ADMIN} ${KEYCLOAK_PASSWORD} ${KC_COMMAND}'
+          render_apply infra/manifests/keycloak/realm-import-job.yaml '${PLATFORM_NS}'
+          render_apply infra/manifests/rabbitmq/rabbitmq-cluster.yaml '${PLATFORM_NS} ${RABBITMQ_USER} ${RABBITMQ_PASSWORD}'
+          render_apply infra/manifests/cassandra/cassandra.yaml '${PLATFORM_NS} ${CASSANDRA_PASSWORD}'
+          render_apply infra/manifests/ingress/keycloak-ingress.yaml '${PLATFORM_NS}'

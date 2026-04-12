@@ -1,0 +1,25 @@
+# ==============================================================================
+# ENT EST Salé — Keycloak Ingress (Traefik)
+# Rendered via: envsubst '${PLATFORM_NS}'
+# ==============================================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak
+  namespace: ${PLATFORM_NS}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: keycloak.localtest.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 80

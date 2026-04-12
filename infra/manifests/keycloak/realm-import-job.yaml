@@ -1,0 +1,151 @@
+# ==============================================================================
+# ENT EST Salé — Keycloak Realm Bootstrap Job
+# Creates baseline realm, roles, and clients for Sprint 0 exit criteria.
+# Rendered via: envsubst '${PLATFORM_NS}'
+# ==============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm-bootstrap-scripts
+  namespace: ${PLATFORM_NS}
+data:
+  realm.json: |
+    {
+      "realm": "ent-est",
+      "enabled": true,
+      "displayName": "ENT EST Sale",
+      "roles": {
+        "realm": [
+          { "name": "student" },
+          { "name": "teacher" },
+          { "name": "admin" }
+        ]
+      },
+      "clients": [
+        {
+          "clientId": "ent-gateway",
+          "name": "ENT Gateway",
+          "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "secret": "ent-gateway-secret",
+          "serviceAccountsEnabled": true,
+          "standardFlowEnabled": false,
+          "directAccessGrantsEnabled": false
+        },
+        {
+          "clientId": "ent-frontend",
+          "name": "ENT Frontend",
+          "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": true,
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": true,
+          "redirectUris": [
+            "http://localhost:3000/*",
+            "http://localhost:5173/*"
+          ],
+          "webOrigins": [
+            "*"
+          ]
+        }
+      ]
+    }
+  bootstrap.sh: |
+    #!/usr/bin/env sh
+    set -eu
+
+    KEYCLOAK_BASE="http://keycloak.${PLATFORM_NS}.svc.cluster.local"
+    HEALTH_URL="$KEYCLOAK_BASE/realms/master"
+    TOKEN_URL="$KEYCLOAK_BASE/realms/master/protocol/openid-connect/token"
+    ADMIN_REALMS_URL="$KEYCLOAK_BASE/admin/realms"
+
+    echo "[keycloak-bootstrap] Waiting for Keycloak service..."
+    i=0
+    until [ "$i" -ge 60 ]; do
+      if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+        break
+      fi
+      i=$((i+1))
+      sleep 5
+    done
+
+    echo "[keycloak-bootstrap] Requesting admin token..."
+    ACCESS_TOKEN=$(curl -fsS -X POST "$TOKEN_URL" \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      --data-urlencode "client_id=admin-cli" \
+      --data-urlencode "username=${KEYCLOAK_ADMIN}" \
+      --data-urlencode "password=${KEYCLOAK_PASSWORD}" \
+      --data-urlencode "grant_type=password" \
+      | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+
+    if [ -z "${ACCESS_TOKEN}" ]; then
+      echo "[keycloak-bootstrap] ERROR: failed to fetch admin token"
+      exit 1
+    fi
+
+    echo "[keycloak-bootstrap] Creating realm ent-est (idempotent)..."
+    HTTP_CODE=$(curl -sS -o /tmp/resp.txt -w "%{http_code}" \
+      -X POST "$ADMIN_REALMS_URL" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+      -H "Content-Type: application/json" \
+      --data-binary @/config/realm.json)
+
+    if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "409" ]; then
+      echo "[keycloak-bootstrap] Realm bootstrap successful (HTTP $HTTP_CODE)."
+      exit 0
+    fi
+
+    echo "[keycloak-bootstrap] ERROR: unexpected HTTP code: $HTTP_CODE"
+    cat /tmp/resp.txt || true
+    exit 1
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-realm-bootstrap
+  namespace: ${PLATFORM_NS}
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 120
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak-realm-bootstrap
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: curlimages/curl:8.7.1
+          command: ["/bin/sh", "/scripts/bootstrap.sh"]
+          env:
+            - name: KEYCLOAK_ADMIN
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret
+                  key: KEYCLOAK_ADMIN
+            - name: KEYCLOAK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret
+                  key: KEYCLOAK_ADMIN_PASSWORD
+          volumeMounts:
+            - name: bootstrap-scripts
+              mountPath: /scripts
+            - name: realm-config
+              mountPath: /config
+      volumes:
+        - name: bootstrap-scripts
+          configMap:
+            name: keycloak-realm-bootstrap-scripts
+            items:
+              - key: bootstrap.sh
+                path: bootstrap.sh
+            defaultMode: 0755
+        - name: realm-config
+          configMap:
+            name: keycloak-realm-bootstrap-scripts
+            items:
+              - key: realm.json
+                path: realm.json
