@@ -73,6 +73,11 @@ jobs:
                 unresolved="$(printf '%s\n' "$unresolved" | grep -vE '\$\{(KEYCLOAK_ADMIN|KEYCLOAK_PASSWORD|ACCESS_TOKEN)\}' || true)"
               fi
 
+              # In cassandra manifest, these are runtime shell vars in container scripts.
+              if [[ "$file" == "infra/manifests/cassandra/cassandra.yaml" ]]; then
+                unresolved="$(printf '%s\n' "$unresolved" | grep -vE '\$\{(CASSANDRA_NEW_PASSWORD|i)\}' || true)"
+              fi
+
               if [[ -n "$unresolved" ]]; then
                 echo "Unresolved template variable(s) in $file"
                 printf '%s\n' "$unresolved"
