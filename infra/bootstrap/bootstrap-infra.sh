@@ -145,6 +145,19 @@ wait_sts() {
   ok "statefulset/$name is ready."
 }
 
+wait_job() {
+  local ns="$1" name="$2" timeout="${3:-300s}"
+  [[ "$SKIP_WAIT" == "true" ]] && { warn "SKIP_WAIT=true — skipping job/$name"; return 0; }
+  log "Waiting for job/$name in $ns (timeout: $timeout)..."
+  if ! kubectl wait --for=condition=complete job/"$name" -n "$ns" --timeout="$timeout"; then
+    error "job/$name did not complete successfully."
+    kubectl get job "$name" -n "$ns" -o wide || true
+    kubectl logs -n "$ns" job/"$name" --tail=200 || true
+    exit 1
+  fi
+  ok "job/$name completed."
+}
+
 # ── Prerequisite checks ───────────────────────────────────────────────────────
 banner "Prerequisite Checks"
 require_cmd kubectl
@@ -305,6 +318,18 @@ fi
 
 wait_sts "$PLATFORM_NS" "cassandra" "900s"
 wait_sts "$PLATFORM_NS" "keycloak"  "900s"
+
+# ── Keycloak realm bootstrap (realm/clients/roles) ──────────────────────────
+banner "Keycloak Realm Bootstrap"
+apply_manifest "$MANIFESTS_DIR/keycloak/realm-import-job.yaml" \
+  '${PLATFORM_NS}'
+wait_job "$PLATFORM_NS" "keycloak-realm-bootstrap" "300s"
+
+# ── Ingress resources ─────────────────────────────────────────────────────────
+banner "Ingress Resources"
+apply_manifest "$MANIFESTS_DIR/ingress/keycloak-ingress.yaml" \
+  '${PLATFORM_NS}'
+ok "Ingress resources applied."
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 banner "Bootstrap Complete"
