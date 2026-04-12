@@ -64,9 +64,20 @@ jobs:
 
             # Fail if unresolved placeholders remain after rendering.
             if grep -q '\${[A-Za-z_][A-Za-z0-9_]*}' "$out"; then
-              echo "Unresolved template variable(s) in $file"
-              grep -n '\${[A-Za-z_][A-Za-z0-9_]*}' "$out"
-              exit 1
+              local unresolved
+              unresolved="$(grep -n '\${[A-Za-z_][A-Za-z0-9_]*}' "$out" || true)"
+
+              # In keycloak realm bootstrap script, these are runtime shell vars
+              # intentionally kept for the Job container.
+              if [[ "$file" == "infra/manifests/keycloak/realm-import-job.yaml" ]]; then
+                unresolved="$(printf '%s\n' "$unresolved" | grep -vE '\$\{(KEYCLOAK_ADMIN|KEYCLOAK_PASSWORD|ACCESS_TOKEN)\}' || true)"
+              fi
+
+              if [[ -n "$unresolved" ]]; then
+                echo "Unresolved template variable(s) in $file"
+                printf '%s\n' "$unresolved"
+                exit 1
+              fi
             fi
 
             # Offline YAML syntax validation (no Kubernetes API required).
