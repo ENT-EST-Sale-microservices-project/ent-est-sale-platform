@@ -1,0 +1,24 @@
+# ==============================================================================
+# ENT EST Salé — Namespaces
+# Rendered via:  envsubst '${PLATFORM_NS} ${APPS_NS} ${OBS_NS} ${TRAEFIK_NS}'
+# ==============================================================================
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${PLATFORM_NS}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${APPS_NS}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${OBS_NS}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${TRAEFIK_NS}

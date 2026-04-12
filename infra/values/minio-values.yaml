@@ -1,0 +1,25 @@
+# ==============================================================================
+# ENT EST Salé — MinIO Helm Values
+# Chart : minio/minio
+#
+# rootUser / rootPassword / persistence.enabled are injected at install time
+# by bootstrap-infra.sh via --set flags — secrets never live in this file.
+# ==============================================================================
+
+image:
+  repository: quay.io/minio/minio
+
+mcImage:
+  repository: quay.io/minio/mc
+
+mode: standalone
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "100m"
+
+# Console service — exposed via port-forward for local access.
+consoleService:
+  type: ClusterIP
+  port: "9090"

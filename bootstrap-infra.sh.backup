@@ -1,0 +1,692 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# ENT EST Salé — Kubernetes Infrastructure Bootstrap
+# ==============================================================================
+# Supports : Kind (local dev) | Existing cluster (prod / staging)
+# Ingress  : Traefik v3  (MIT, replaces ingress-nginx EOL March 2026)
+# Platform : Keycloak · RabbitMQ · MinIO · Cassandra  — 100 % open-source
+#
+# Usage:
+#   Local (Kind):
+#     ./bootstrap-infra.sh --mode kind --cluster-name ent-est \
+#                          --kind-config ./kind-config.yaml
+#
+#   Existing cluster (prod):
+#     ./bootstrap-infra.sh --mode existing \
+#                          --kube-context prod-admin@prod-cluster
+#
+# Environment overrides (all optional):
+#   PLATFORM_NS          ent-platform
+#   APPS_NS              ent-apps
+#   OBS_NS               ent-observability
+#   TRAEFIK_NS           traefik
+#   PERSISTENCE_ENABLED  false | true
+#   SKIP_WAIT            false | true
+#   KEYCLOAK_ADMIN       admin
+#   KEYCLOAK_PASSWORD    ChangeMe_123!
+#   RABBITMQ_USER        ent
+#   RABBITMQ_PASSWORD    ChangeMe_123!
+#   MINIO_ROOT_USER      minio
+#   MINIO_ROOT_PASSWORD  ChangeMe_123!
+#   CASSANDRA_PASSWORD   ChangeMe_123!
+# ==============================================================================
+set -euo pipefail
+
+# ── Colours ───────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
+
+log()    { echo -e "${CYAN}[$(date '+%H:%M:%S')] INFO${RESET}  $*"; }
+ok()     { echo -e "${GREEN}[$(date '+%H:%M:%S')]  OK  ${RESET}  $*"; }
+warn()   { echo -e "${YELLOW}[$(date '+%H:%M:%S')] WARN${RESET}  $*"; }
+error()  { echo -e "${RED}[$(date '+%H:%M:%S')] ERROR${RESET} $*" >&2; }
+banner() {
+  echo -e "\n${BOLD}${CYAN}══════════════════════════════════════════════════${RESET}"
+  echo -e "${BOLD}${CYAN}  $*${RESET}"
+  echo -e "${BOLD}${CYAN}══════════════════════════════════════════════════${RESET}\n"
+}
+
+# ── Defaults ──────────────────────────────────────────────────────────────────
+MODE="kind"
+CLUSTER_NAME="ent-est"
+KIND_CONFIG="./kind-config.yaml"
+KUBE_CONTEXT=""
+
+PLATFORM_NS="${PLATFORM_NS:-ent-platform}"
+APPS_NS="${APPS_NS:-ent-apps}"
+OBS_NS="${OBS_NS:-ent-observability}"
+TRAEFIK_NS="${TRAEFIK_NS:-traefik}"
+
+PERSISTENCE_ENABLED="${PERSISTENCE_ENABLED:-false}"
+SKIP_WAIT="${SKIP_WAIT:-false}"
+
+KEYCLOAK_ADMIN="${KEYCLOAK_ADMIN:-admin}"
+KEYCLOAK_PASSWORD="${KEYCLOAK_PASSWORD:-ChangeMe_123!}"
+RABBITMQ_USER="${RABBITMQ_USER:-ent}"
+RABBITMQ_PASSWORD="${RABBITMQ_PASSWORD:-ChangeMe_123!}"
+MINIO_ROOT_USER="${MINIO_ROOT_USER:-minio}"
+MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD:-ChangeMe_123!}"
+# The official Cassandra image always bootstraps with superuser "cassandra".
+# This password is applied via postStart lifecycle hook.
+CASSANDRA_PASSWORD="${CASSANDRA_PASSWORD:-ChangeMe_123!}"
+
+POD_WAIT_TIMEOUT="${POD_WAIT_TIMEOUT:-600s}"
+
+# ── Argument parsing ──────────────────────────────────────────────────────────
+usage() {
+  grep '^#' "$0" | head -35 | sed 's/^# \{0,1\}//'
+  exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mode)           MODE="$2";         shift 2 ;;
+    --cluster-name)   CLUSTER_NAME="$2"; shift 2 ;;
+    --kind-config)    KIND_CONFIG="$2";  shift 2 ;;
+    --kube-context)   KUBE_CONTEXT="$2"; shift 2 ;;
+    -h|--help)        usage ;;
+    *)  error "Unknown argument: $1"; usage ;;
+  esac
+done
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    error "Required command not found: '$1'. Please install it first."
+    exit 1
+  fi
+}
+
+wait_deploy() {
+  local ns="$1" name="$2" timeout="${3:-$POD_WAIT_TIMEOUT}"
+  [[ "$SKIP_WAIT" == "true" ]] && { warn "SKIP_WAIT=true — skipping deployment/$name"; return 0; }
+  log "Waiting for deployment/$name in $ns (timeout: $timeout)..."
+  if ! kubectl rollout status deployment/"$name" -n "$ns" --timeout="$timeout"; then
+    error "deployment/$name did not become ready."
+    kubectl get pods -n "$ns" -o wide || true
+    kubectl describe pods -n "$ns" -l "app.kubernetes.io/name=$name" 2>/dev/null | tail -40 || true
+    exit 1
+  fi
+  ok "deployment/$name is ready."
+}
+
+wait_sts() {
+  local ns="$1" name="$2" timeout="${3:-$POD_WAIT_TIMEOUT}"
+  [[ "$SKIP_WAIT" == "true" ]] && { warn "SKIP_WAIT=true — skipping statefulset/$name"; return 0; }
+  log "Waiting for statefulset/$name in $ns (timeout: $timeout)..."
+  if ! kubectl rollout status statefulset/"$name" -n "$ns" --timeout="$timeout"; then
+    error "statefulset/$name did not become ready."
+    kubectl get pods -n "$ns" -o wide || true
+    kubectl describe pods -n "$ns" -l "app.kubernetes.io/name=$name" 2>/dev/null | tail -40 || true
+    exit 1
+  fi
+  ok "statefulset/$name is ready."
+}
+
+# ── Prerequisite checks ───────────────────────────────────────────────────────
+banner "Prerequisite Checks"
+require_cmd kubectl
+require_cmd helm
+[[ "$MODE" == "kind" ]] && require_cmd kind
+
+log "Helm version:    $(helm version --short 2>/dev/null)"
+log "kubectl version: $(kubectl version --client -o json 2>/dev/null | grep '"gitVersion"' | head -1 | tr -d ' ')"
+
+# ── Cluster bootstrap ─────────────────────────────────────────────────────────
+banner "Cluster Setup -- mode: $MODE"
+
+if [[ "$MODE" == "kind" ]]; then
+  [[ ! -f "$KIND_CONFIG" ]] && { error "Kind config not found: $KIND_CONFIG"; exit 1; }
+  if kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"; then
+    warn "Kind cluster '$CLUSTER_NAME' already exists -- skipping creation."
+  else
+    log "Creating Kind cluster '$CLUSTER_NAME'..."
+    kind create cluster --name "$CLUSTER_NAME" --config "$KIND_CONFIG"
+    ok "Kind cluster created."
+  fi
+  kubectl config use-context "kind-$CLUSTER_NAME" >/dev/null
+  log "Active context: kind-$CLUSTER_NAME"
+
+elif [[ "$MODE" == "existing" ]]; then
+  [[ -n "$KUBE_CONTEXT" ]] && kubectl config use-context "$KUBE_CONTEXT" >/dev/null
+  log "Active context: $(kubectl config current-context)"
+
+else
+  error "Invalid --mode '$MODE'. Use: kind | existing"
+  exit 1
+fi
+
+log "Cluster info:"
+kubectl cluster-info 2>&1 | head -3
+
+# ── Namespaces ────────────────────────────────────────────────────────────────
+banner "Namespaces"
+for ns in "$PLATFORM_NS" "$APPS_NS" "$OBS_NS" "$TRAEFIK_NS"; do
+  kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  ok "Namespace '$ns' ready."
+done
+
+# ── Helm repositories ─────────────────────────────────────────────────────────
+banner "Helm Repositories"
+helm repo add traefik https://traefik.github.io/charts >/dev/null 2>&1 || true
+helm repo add minio   https://charts.min.io/           >/dev/null 2>&1 || true
+helm repo update >/dev/null
+ok "All Helm repositories configured and updated."
+
+# ── Traefik v3 (Ingress Controller) ──────────────────────────────────────────
+banner "Traefik v3 (Ingress Controller)"
+
+TRAEFIK_EXTRA_ARGS=()
+if [[ "$MODE" == "kind" ]]; then
+  TRAEFIK_EXTRA_ARGS+=(
+    --set "service.type=NodePort"
+    --set "ports.web.nodePort=30080"
+    --set "ports.websecure.nodePort=30443"
+    --set "providers.kubernetesIngress.publishedService.enabled=true"
+  )
+fi
+
+helm upgrade --install traefik traefik/traefik \
+  --namespace "$TRAEFIK_NS" \
+  --version ">=38.0.0" \
+  --set "ingressClass.enabled=true" \
+  --set "ingressClass.isDefaultClass=true" \
+  "${TRAEFIK_EXTRA_ARGS[@]}" \
+  --wait --timeout 3m
+
+ok "Traefik deployed."
+wait_deploy "$TRAEFIK_NS" "traefik"
+log "Persistence enabled: $PERSISTENCE_ENABLED"
+
+# ── PostgreSQL for Keycloak ───────────────────────────────────────────────────
+banner "PostgreSQL (for Keycloak)"
+
+kubectl apply -n "$PLATFORM_NS" -f - <<PGEOF
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: keycloak-postgres-secret
+  namespace: ${PLATFORM_NS}
+type: Opaque
+stringData:
+  POSTGRES_USER: keycloak
+  POSTGRES_PASSWORD: "${KEYCLOAK_PASSWORD}"
+  POSTGRES_DB: keycloak
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: keycloak-postgres
+  namespace: ${PLATFORM_NS}
+  labels:
+    app.kubernetes.io/name: keycloak-postgres
+spec:
+  serviceName: keycloak-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: keycloak-postgres-secret
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "keycloak"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "keycloak"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+              subPath: pgdata
+      volumes:
+        - name: pgdata
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-postgres
+  namespace: ${PLATFORM_NS}
+  labels:
+    app.kubernetes.io/name: keycloak-postgres
+spec:
+  clusterIP: None
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app.kubernetes.io/name: keycloak-postgres
+PGEOF
+
+ok "PostgreSQL StatefulSet applied."
+wait_sts "$PLATFORM_NS" "keycloak-postgres" "300s"
+
+# ── Keycloak ──────────────────────────────────────────────────────────────────
+# Deployed as a plain StatefulSet via kubectl — no Helm chart.
+#
+# WHY NO HELM CHART: The codecentric/keycloakx chart tpl()-renders extraEnv and
+# command as string blocks. Passing --values via bash process substitution
+# (<(echo "$VAR")) is silently ignored by helm in many environments, causing the
+# chart to fall back to its own defaults: wrong image tag (25.0.1), no env vars,
+# and no command override — so the container always prints the kc.sh help page
+# and crash-loops. A plain manifest is 100% deterministic with no chart magic.
+#
+# start-dev : HTTP, no TLS, no hostname enforcement -- ideal for Kind / local.
+# start     : production mode; supply KC_HOSTNAME separately.
+banner "Keycloak 26 (plain StatefulSet)"
+
+# Remove any previously failed Helm-managed release to avoid conflicts.
+if helm status keycloak -n "$PLATFORM_NS" >/dev/null 2>&1; then
+  warn "Found existing Helm release 'keycloak' -- uninstalling before plain-manifest deploy..."
+  helm uninstall keycloak -n "$PLATFORM_NS" --wait 2>/dev/null || true
+  sleep 5
+fi
+
+KC_COMMAND="start-dev"
+[[ "$MODE" == "existing" ]] && KC_COMMAND="start"
+
+kubectl apply -n "$PLATFORM_NS" -f - <<KCEOF
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: keycloak-secret
+  namespace: ${PLATFORM_NS}
+type: Opaque
+stringData:
+  KEYCLOAK_ADMIN: "${KEYCLOAK_ADMIN}"
+  KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_PASSWORD}"
+  KC_DB_PASSWORD: "${KEYCLOAK_PASSWORD}"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: keycloak
+  namespace: ${PLATFORM_NS}
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/instance: keycloak
+spec:
+  serviceName: keycloak
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak
+        app.kubernetes.io/instance: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.1.4
+          imagePullPolicy: IfNotPresent
+          args: ["${KC_COMMAND}"]
+          env:
+            - name: KEYCLOAK_ADMIN
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret
+                  key: KEYCLOAK_ADMIN
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret
+                  key: KEYCLOAK_ADMIN_PASSWORD
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL
+              value: "jdbc:postgresql://keycloak-postgres.${PLATFORM_NS}.svc.cluster.local:5432/keycloak"
+            - name: KC_DB_USERNAME
+              value: keycloak
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret
+                  key: KC_DB_PASSWORD
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_METRICS_ENABLED
+              value: "true"
+            - name: JAVA_OPTS_APPEND
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=50.0"
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9000
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: 9000
+              scheme: HTTP
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 36
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 9000
+              scheme: HTTP
+            periodSeconds: 30
+            failureThreshold: 3
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 9000
+              scheme: HTTP
+            periodSeconds: 10
+            failureThreshold: 6
+            timeoutSeconds: 5
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: ${PLATFORM_NS}
+  labels:
+    app.kubernetes.io/name: keycloak
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: keycloak
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+    - name: management
+      port: 9000
+      targetPort: 9000
+KCEOF
+
+ok "Keycloak StatefulSet applied."
+
+# ── RabbitMQ (Cluster Operator) ───────────────────────────────────────────────
+banner "RabbitMQ (Cluster Operator)"
+
+RABBITMQ_OPERATOR_URL="https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml"
+log "Applying RabbitMQ Cluster Operator..."
+kubectl apply -f "$RABBITMQ_OPERATOR_URL" >/dev/null
+wait_deploy "rabbitmq-system" "rabbitmq-cluster-operator" "120s"
+
+log "Creating RabbitMQ cluster resource..."
+kubectl apply -n "$PLATFORM_NS" -f - <<RMQEOF
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: rabbitmq
+  namespace: ${PLATFORM_NS}
+spec:
+  replicas: 1
+  image: rabbitmq:4.1.3-management
+  rabbitmq:
+    additionalConfig: |
+      default_user = ${RABBITMQ_USER}
+      default_pass = ${RABBITMQ_PASSWORD}
+  persistence:
+    storage: "1Gi"
+    storageClassName: "standard"
+  service:
+    type: ClusterIP
+RMQEOF
+
+ok "RabbitMQ cluster resource applied."
+
+# ── MinIO (Object Storage) ────────────────────────────────────────────────────
+banner "MinIO (Object Storage)"
+
+PERSIST_FLAG="$([[ "$PERSISTENCE_ENABLED" == "true" ]] && echo "true" || echo "false")"
+
+helm upgrade --install minio minio/minio \
+  --namespace "$PLATFORM_NS" \
+  --set image.repository="quay.io/minio/minio" \
+  --set mcImage.repository="quay.io/minio/mc" \
+  --set rootUser="$MINIO_ROOT_USER" \
+  --set rootPassword="$MINIO_ROOT_PASSWORD" \
+  --set mode=standalone \
+  --set persistence.enabled="$PERSIST_FLAG" \
+  --set resources.requests.memory="256Mi" \
+  --set resources.requests.cpu="100m" \
+  --timeout 5m
+
+ok "MinIO chart applied."
+wait_deploy "$PLATFORM_NS" "minio"
+
+# ── Cassandra ─────────────────────────────────────────────────────────────────
+# Official Apache Cassandra image (Apache 2.0).
+#
+# FIX 1: CASSANDRA_USER/CASSANDRA_PASSWORD env vars are not recognised by the
+#         official image. The built-in superuser is always "cassandra". Password
+#         is rotated via a postStart lifecycle hook that retries until ready.
+# FIX 2: SimpleSnitch -- correct for single-DC/single-node.
+#         GossipPropertyFileSnitch needs cassandra-topology.properties (absent).
+# FIX 3: livenessProbe uses tcpSocket. In Cassandra 5 "nodetool" carries its own
+#         1-second internal timeout that fires before probe.timeoutSeconds,
+#         causing spurious pod kills on every cycle.
+# FIX 4: readinessProbe tries the rotated password first, falls back to
+#         "cassandra", so it works both before and after the postStart hook runs.
+banner "Cassandra 5 (plain StatefulSet)"
+
+kubectl apply -n "$PLATFORM_NS" -f - <<CSEOF
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cassandra-secret
+  namespace: ${PLATFORM_NS}
+type: Opaque
+stringData:
+  password: "${CASSANDRA_PASSWORD}"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cassandra
+  namespace: ${PLATFORM_NS}
+  labels:
+    app.kubernetes.io/name: cassandra
+    app.kubernetes.io/instance: cassandra
+spec:
+  serviceName: cassandra
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cassandra
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cassandra
+        app.kubernetes.io/instance: cassandra
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: cassandra
+          image: cassandra:5.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: cql
+              containerPort: 9042
+            - name: inter-node
+              containerPort: 7000
+          env:
+            - name: CASSANDRA_NEW_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-secret
+                  key: password
+            - name: CASSANDRA_AUTHENTICATOR
+              value: PasswordAuthenticator
+            - name: CASSANDRA_AUTHORIZER
+              value: CassandraAuthorizer
+            - name: CASSANDRA_ENDPOINT_SNITCH
+              value: SimpleSnitch
+            - name: CASSANDRA_CLUSTER_NAME
+              value: ent-est-cluster
+            - name: HEAP_NEWSIZE
+              value: "128M"
+            - name: MAX_HEAP_SIZE
+              value: "512M"
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/bash
+                  - -c
+                  - |
+                    set +e
+                    for i in \$(seq 1 60); do
+                      if cqlsh -u cassandra -p cassandra 127.0.0.1 9042 \
+                           -e "ALTER USER cassandra WITH PASSWORD '\${CASSANDRA_NEW_PASSWORD}';" \
+                           >/dev/null 2>&1; then
+                        echo "Password updated on attempt \${i}."
+                        exit 0
+                      fi
+                      sleep 5
+                    done
+                    echo "WARNING: password update did not complete in time."
+          livenessProbe:
+            tcpSocket:
+              port: 9042
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  cqlsh -u cassandra -p "\${CASSANDRA_NEW_PASSWORD}" 127.0.0.1 9042 \
+                    -e "SELECT release_version FROM system.local" >/dev/null 2>&1 \
+                  || \
+                  cqlsh -u cassandra -p cassandra 127.0.0.1 9042 \
+                    -e "SELECT release_version FROM system.local" >/dev/null 2>&1
+            initialDelaySeconds: 90
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 8
+          volumeMounts:
+            - name: cassandra-data
+              mountPath: /var/lib/cassandra
+      volumes:
+        - name: cassandra-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cassandra
+  namespace: ${PLATFORM_NS}
+  labels:
+    app.kubernetes.io/name: cassandra
+spec:
+  clusterIP: None
+  ports:
+    - name: cql
+      port: 9042
+      targetPort: 9042
+  selector:
+    app.kubernetes.io/name: cassandra
+CSEOF
+
+ok "Cassandra StatefulSet applied."
+
+# ── Wait for all workloads ─────────────────────────────────────────────────────
+banner "Waiting for all workloads"
+
+if [[ "$SKIP_WAIT" != "true" ]]; then
+  log "Waiting for RabbitMQ pod (timeout: $POD_WAIT_TIMEOUT)..."
+  kubectl wait pod \
+    -n "$PLATFORM_NS" \
+    -l "app.kubernetes.io/name=rabbitmq" \
+    --for=condition=Ready \
+    --timeout="$POD_WAIT_TIMEOUT" 2>/dev/null \
+  || kubectl wait pod \
+    -n "$PLATFORM_NS" \
+    -l "rabbitmq.com/cluster=rabbitmq" \
+    --for=condition=Ready \
+    --timeout="$POD_WAIT_TIMEOUT" 2>/dev/null \
+  || warn "Could not confirm RabbitMQ pod readiness -- check manually."
+  ok "RabbitMQ pod ready."
+fi
+
+wait_sts "$PLATFORM_NS" "cassandra" "900s"
+wait_sts "$PLATFORM_NS" "keycloak"  "900s"
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+banner "Bootstrap Complete"
+
+CURRENT_CTX=$(kubectl config current-context)
+cat <<SUMMARY
+
+  ${BOLD}Context${RESET}      : $CURRENT_CTX
+  ${BOLD}Namespaces${RESET}   : $PLATFORM_NS | $APPS_NS | $OBS_NS | $TRAEFIK_NS
+  ${BOLD}Persistence${RESET}  : $PERSISTENCE_ENABLED
+
+  ${BOLD}Components${RESET}:
+    Ingress    -> Traefik v3          ($TRAEFIK_NS)
+    IAM        -> Keycloak 26.1.4     ($PLATFORM_NS)   admin : $KEYCLOAK_ADMIN
+    Messaging  -> RabbitMQ 4.1        ($PLATFORM_NS)   user  : $RABBITMQ_USER
+    Storage    -> MinIO               ($PLATFORM_NS)   user  : $MINIO_ROOT_USER
+    Database   -> Cassandra 5.0       ($PLATFORM_NS)   user  : cassandra
+
+  ${BOLD}Quick checks${RESET}:
+    kubectl get pods -n $PLATFORM_NS
+    kubectl get pods -n $TRAEFIK_NS
+
+  ${BOLD}Keycloak console${RESET}:
+    kubectl port-forward -n $PLATFORM_NS svc/keycloak 8080:80
+    -> http://localhost:8080  ($KEYCLOAK_ADMIN / $KEYCLOAK_PASSWORD)
+
+  ${BOLD}MinIO console${RESET}:
+    kubectl port-forward -n $PLATFORM_NS svc/minio-console 9090:9090
+    -> http://localhost:9090  ($MINIO_ROOT_USER / $MINIO_ROOT_PASSWORD)
+
+  ${BOLD}RabbitMQ management${RESET}:
+    kubectl port-forward -n $PLATFORM_NS svc/rabbitmq 15672:15672
+    -> http://localhost:15672  ($RABBITMQ_USER / $RABBITMQ_PASSWORD)
+
+  ${BOLD}Cassandra CQL${RESET}:
+    kubectl port-forward -n $PLATFORM_NS svc/cassandra 9042:9042
+    -> cqlsh 127.0.0.1 9042 -u cassandra -p $CASSANDRA_PASSWORD
+
+SUMMARY
