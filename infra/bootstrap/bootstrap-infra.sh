@@ -197,6 +197,7 @@ kubectl cluster-info 2>&1 | head -3
 
 # ── Namespaces ────────────────────────────────────────────────────────────────
 banner "Namespaces"
+# shellcheck disable=SC2016
 apply_manifest "$MANIFESTS_DIR/namespaces.yaml" \
   '${PLATFORM_NS} ${APPS_NS} ${OBS_NS} ${TRAEFIK_NS}'
 ok "All namespaces applied."
@@ -233,6 +234,7 @@ wait_deploy "$TRAEFIK_NS" "traefik"
 
 # ── PostgreSQL for Keycloak ───────────────────────────────────────────────────
 banner "PostgreSQL (for Keycloak)"
+# shellcheck disable=SC2016
 apply_manifest "$MANIFESTS_DIR/keycloak/postgres.yaml" \
   '${PLATFORM_NS} ${KEYCLOAK_PASSWORD}'
 ok "PostgreSQL StatefulSet applied."
@@ -253,6 +255,7 @@ fi
 export KC_COMMAND="start-dev"
 [[ "$MODE" == "existing" ]] && KC_COMMAND="start"
 
+# shellcheck disable=SC2016
 apply_manifest "$MANIFESTS_DIR/keycloak/keycloak.yaml" \
   '${PLATFORM_NS} ${KEYCLOAK_ADMIN} ${KEYCLOAK_PASSWORD} ${KC_COMMAND}'
 ok "Keycloak StatefulSet applied."
@@ -266,6 +269,7 @@ kubectl apply -f "$RABBITMQ_OPERATOR_URL" >/dev/null
 wait_deploy "rabbitmq-system" "rabbitmq-cluster-operator" "120s"
 
 log "Creating RabbitMQ cluster resource..."
+# shellcheck disable=SC2016
 apply_manifest "$MANIFESTS_DIR/rabbitmq/rabbitmq-cluster.yaml" \
   '${PLATFORM_NS} ${RABBITMQ_USER} ${RABBITMQ_PASSWORD}'
 ok "RabbitMQ cluster resource applied."
@@ -293,6 +297,7 @@ banner "Cassandra 5 (plain StatefulSet)"
 # NOTE: envsubst is called with an explicit var list so that ${CASSANDRA_NEW_PASSWORD}
 # and ${i} inside the inline container script are NOT expanded by envsubst — they
 # are container-level shell variables resolved at runtime inside the pod.
+# shellcheck disable=SC2016
 apply_manifest "$MANIFESTS_DIR/cassandra/cassandra.yaml" \
   '${PLATFORM_NS} ${CASSANDRA_PASSWORD}'
 ok "Cassandra StatefulSet applied."
@@ -321,12 +326,14 @@ wait_sts "$PLATFORM_NS" "keycloak"  "900s"
 
 # ── Keycloak realm bootstrap (realm/clients/roles) ──────────────────────────
 banner "Keycloak Realm Bootstrap"
+# shellcheck disable=SC2016
 apply_manifest "$MANIFESTS_DIR/keycloak/realm-import-job.yaml" \
   '${PLATFORM_NS}'
 wait_job "$PLATFORM_NS" "keycloak-realm-bootstrap" "300s"
 
 # ── Ingress resources ─────────────────────────────────────────────────────────
 banner "Ingress Resources"
+# shellcheck disable=SC2016
 apply_manifest "$MANIFESTS_DIR/ingress/keycloak-ingress.yaml" \
   '${PLATFORM_NS}'
 ok "Ingress resources applied."

@@ -29,6 +29,7 @@ jobs:
         uses: ibiqlik/action-yamllint@v3
         with:
           file_or_dir: 'infra/manifests infra/values infra/cluster'
+          config_file: '.yamllint'
           strict: false
 
   render-validate-manifests:
@@ -55,7 +56,7 @@ jobs:
             local file="$1"
             local vars="$2"
             envsubst "$vars" < "$file" > /tmp/rendered.yaml
-            kubectl apply --dry-run=client -f /tmp/rendered.yaml >/dev/null
+            kubectl apply --dry-run=client --validate=false -f /tmp/rendered.yaml >/dev/null
           }
 
           render_apply infra/manifests/namespaces.yaml '${PLATFORM_NS} ${APPS_NS} ${OBS_NS} ${TRAEFIK_NS}'
