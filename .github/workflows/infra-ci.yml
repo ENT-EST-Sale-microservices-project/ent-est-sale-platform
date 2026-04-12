@@ -70,14 +70,7 @@ jobs:
             fi
 
             # Offline YAML syntax validation (no Kubernetes API required).
-            python -c "import sys,yaml; from pathlib import Path; p=Path(sys.argv[1]); docs=list(yaml.safe_load_all(p.read_text(encoding='utf-8')));\
-if not docs: raise SystemExit(f'No YAML document found in {p}');\
-\
-for idx,doc in enumerate(docs,1):\
-  (doc is None) or isinstance(doc,dict) or (_ for _ in ()).throw(SystemExit(f'Document #{idx} in {p} is not a mapping/object'));\
-  doc is None or ('apiVersion' in doc) or (_ for _ in ()).throw(SystemExit(f'Document #{idx} in {p} missing required key: apiVersion'));\
-  doc is None or ('kind' in doc) or (_ for _ in ()).throw(SystemExit(f'Document #{idx} in {p} missing required key: kind'));\
-print(f'OK: {p}')" "$out"
+            python -c 'import sys,yaml; from pathlib import Path; p=Path(sys.argv[1]); docs=list(yaml.safe_load_all(p.read_text(encoding="utf-8"))); docs or (_ for _ in ()).throw(SystemExit(f"No YAML document found in {p}")); [((doc is None) or isinstance(doc, dict) or (_ for _ in ()).throw(SystemExit(f"Document #{idx} in {p} is not a mapping/object")), (doc is None) or ("apiVersion" in doc) or (_ for _ in ()).throw(SystemExit(f"Document #{idx} in {p} missing required key: apiVersion")), (doc is None) or ("kind" in doc) or (_ for _ in ()).throw(SystemExit(f"Document #{idx} in {p} missing required key: kind"))) for idx, doc in enumerate(docs, 1)]; print(f"OK: {p}")' "$out"
           }
 
           render_and_validate infra/manifests/namespaces.yaml '${PLATFORM_NS} ${APPS_NS} ${OBS_NS} ${TRAEFIK_NS}'
