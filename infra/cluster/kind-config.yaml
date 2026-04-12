@@ -1,0 +1,24 @@
+# ==============================================================================
+# ENT EST Salé — Kind Cluster Configuration
+# ==============================================================================
+# Exposes host ports 30080 / 30443 so Traefik NodePort can be reached from
+# the developer's machine without any additional port-forward.
+# ==============================================================================
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 30443
+        hostPort: 443
+        protocol: TCP

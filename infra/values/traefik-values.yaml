@@ -1,0 +1,38 @@
+# ==============================================================================
+# ENT EST Salé — Traefik v3 Helm Values
+# Chart : traefik/traefik  >=38.0.0
+#
+# Mode-specific overrides (Kind NodePort, existing LoadBalancer) are injected
+# at install time by bootstrap-infra.sh via --set flags — do not add them here.
+# ==============================================================================
+
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+
+providers:
+  kubernetesIngress:
+    publishedService:
+      enabled: true
+
+# Expose Prometheus metrics (scraped by the observability stack).
+metrics:
+  prometheus:
+    entryPoint: metrics
+
+# Structured JSON logs — easier to parse in Grafana/Loki.
+logs:
+  general:
+    format: json
+  access:
+    enabled: true
+    format: json
+
+# Keep a reasonably small footprint for local dev.
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"

@@ -1,0 +1,31 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+
+# For reproducible networking in local environments.
+networking:
+  # Keep Kind default CNI so pod networking works out of the box.
+  disableDefaultCNI: false
+  # Explicit, stable CIDRs reduce surprises across machines.
+  podSubnet: 10.244.0.0/16
+  serviceSubnet: 10.96.0.0/12
+
+nodes:
+  - role: control-plane
+    # Mark control-plane as ingress-ready (commonly used by ingress-nginx on Kind).
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    # Expose ingress ports from the cluster to host.
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+
+  - role: worker
+  - role: worker

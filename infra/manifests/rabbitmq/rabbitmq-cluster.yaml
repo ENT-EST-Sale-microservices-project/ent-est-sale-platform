@@ -1,0 +1,22 @@
+# ==============================================================================
+# ENT EST Salé — RabbitMQ 4.1 (via Cluster Operator)
+# Rendered via:  envsubst '${PLATFORM_NS} ${RABBITMQ_USER} ${RABBITMQ_PASSWORD}'
+# ==============================================================================
+---
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: rabbitmq
+  namespace: ${PLATFORM_NS}
+spec:
+  replicas: 1
+  image: rabbitmq:4.1.3-management
+  rabbitmq:
+    additionalConfig: |
+      default_user = ${RABBITMQ_USER}
+      default_pass = ${RABBITMQ_PASSWORD}
+  persistence:
+    storage: "1Gi"
+    storageClassName: "standard"
+  service:
+    type: ClusterIP
