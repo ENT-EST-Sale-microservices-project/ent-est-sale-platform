@@ -10,6 +10,11 @@ Le but est de permettre:
 - Gestion académique (calendrier, examens/devoirs)
 - Assistance IA conversationnelle/générative
 
+### Exécution locale rapide (Docker Compose)
+
+Pour une exécution locale sans Kubernetes, utiliser la stack Compose:
+- [docs/README-compose.md](docs/README-compose.md)
+
 ---
 
 ## 2) Références du sujet (PDF)

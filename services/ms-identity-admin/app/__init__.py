@@ -1,0 +1,2 @@
+"""MS-Identity-Admin package."""
+

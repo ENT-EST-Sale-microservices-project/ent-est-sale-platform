@@ -1,0 +1,53 @@
+{
+  "ifResourceExists": "SKIP",
+  "users": [
+    {
+      "username": "admin1",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "One",
+      "email": "admin1@ent.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "__ADMIN_PASSWORD__",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin"]
+    },
+    {
+      "username": "teacher1",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Teacher",
+      "lastName": "One",
+      "email": "teacher1@ent.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "__TEACHER_PASSWORD__",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["teacher"]
+    },
+    {
+      "username": "student1",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Student",
+      "lastName": "One",
+      "email": "student1@ent.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "__STUDENT_PASSWORD__",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["student"]
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+"""MS-Notification package."""
+

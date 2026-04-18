@@ -60,6 +60,7 @@ tmp/
 .env.*
 !.env.example
 !.env.template
+!.env.compose.example
 infra/.env
 infra/.env.*
 !infra/.env.example
@@ -96,3 +97,6 @@ crash.log
 *.exe
 *.dll
 *.class
+
+
+.codex

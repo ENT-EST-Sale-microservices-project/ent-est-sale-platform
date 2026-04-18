@@ -1,0 +1,500 @@
+name: ${COMPOSE_PROJECT_NAME:-ent-est-platform}
+
+x-common: &common
+  restart: unless-stopped
+  networks:
+    - ent-network
+
+services:
+  postgres-keycloak:
+    <<: *common
+    image: postgres:16
+    container_name: ent-postgres-keycloak
+    environment:
+      POSTGRES_DB: ${KEYCLOAK_DB_NAME:-keycloak}
+      POSTGRES_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-ChangeMe_123!}
+      TZ: ${TZ:-Africa/Casablanca}
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${KEYCLOAK_DB_USER:-keycloak} -d ${KEYCLOAK_DB_NAME:-keycloak}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  keycloak:
+    <<: *common
+    image: quay.io/keycloak/keycloak:26.1.4
+    container_name: ent-keycloak
+    command:
+      - start-dev
+      - --http-port=8080
+      - --health-enabled=true
+      - --metrics-enabled=true
+      - --hostname=${KEYCLOAK_HOSTNAME:-localhost}
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-ChangeMe_123!}
+      KC_DB: postgres
+      KC_DB_URL_HOST: postgres-keycloak
+      KC_DB_URL_PORT: 5432
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME:-keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-ChangeMe_123!}
+      KC_PROXY_HEADERS: xforwarded
+      JAVA_OPTS_APPEND: -XX:+UseContainerSupport -XX:MaxRAMPercentage=50.0
+      TZ: ${TZ:-Africa/Casablanca}
+    ports:
+      - "8080:8080"
+      - "9000:9000"
+    depends_on:
+      postgres-keycloak:
+        condition: service_healthy
+
+  keycloak-realm-bootstrap:
+    image: curlimages/curl:8.7.1
+    container_name: ent-keycloak-bootstrap
+    networks:
+      - ent-network
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-ChangeMe_123!}
+    volumes:
+      - ./infra/compose/keycloak/bootstrap-realm.sh:/scripts/bootstrap-realm.sh:ro
+      - ./infra/compose/keycloak/realm.json:/config/realm.json:ro
+    entrypoint: ["/bin/sh", "/scripts/bootstrap-realm.sh"]
+    depends_on:
+      keycloak:
+        condition: service_started
+    restart: "no"
+
+  keycloak-users-bootstrap:
+    image: curlimages/curl:8.7.1
+    container_name: ent-keycloak-users-bootstrap
+    networks:
+      - ent-network
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-ChangeMe_123!}
+      DEV_ADMIN_PASSWORD: ${DEV_ADMIN_PASSWORD:-Admin_123!}
+      DEV_TEACHER_PASSWORD: ${DEV_TEACHER_PASSWORD:-Teacher_123!}
+      DEV_STUDENT_PASSWORD: ${DEV_STUDENT_PASSWORD:-Student_123!}
+    volumes:
+      - ./infra/compose/keycloak/bootstrap-users.sh:/scripts/bootstrap-users.sh:ro
+      - ./infra/compose/keycloak/users-partial-import.template.json:/config/users-partial-import.template.json:ro
+    entrypoint: ["/bin/sh", "/scripts/bootstrap-users.sh"]
+    depends_on:
+      keycloak-realm-bootstrap:
+        condition: service_completed_successfully
+    restart: "no"
+
+  rabbitmq:
+    <<: *common
+    image: rabbitmq:4.1.3-management
+    container_name: ent-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-ent}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-ChangeMe_123!}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+      TZ: ${TZ:-Africa/Casablanca}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  minio:
+    <<: *common
+    image: quay.io/minio/minio:latest
+    container_name: ent-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ChangeMe_123!}
+      TZ: ${TZ:-Africa/Casablanca}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9001:9001"
+      - "9002:9000"
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    container_name: ent-minio-init
+    networks:
+      - ent-network
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ChangeMe_123!}
+      MINIO_DEFAULT_BUCKETS: ${MINIO_DEFAULT_BUCKETS:-ent-courses,ent-uploads,ent-logs}
+    volumes:
+      - ./infra/compose/minio/init-minio.sh:/scripts/init-minio.sh:ro
+    entrypoint: ["/bin/sh", "/scripts/init-minio.sh"]
+    depends_on:
+      minio:
+        condition: service_started
+    restart: "no"
+
+  cassandra:
+    <<: *common
+    image: cassandra:5.0
+    container_name: ent-cassandra
+    environment:
+      CASSANDRA_CLUSTER_NAME: ${CASSANDRA_CLUSTER_NAME:-ent-est-cluster}
+      CASSANDRA_AUTHENTICATOR: PasswordAuthenticator
+      CASSANDRA_AUTHORIZER: CassandraAuthorizer
+      CASSANDRA_ENDPOINT_SNITCH: SimpleSnitch
+      HEAP_NEWSIZE: 128M
+      MAX_HEAP_SIZE: 512M
+      CASSANDRA_PASSWORD: ${CASSANDRA_PASSWORD:-ChangeMe_123!}
+      TZ: ${TZ:-Africa/Casablanca}
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    ports:
+      - "9042:9042"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'cqlsh -u cassandra -p cassandra 127.0.0.1 9042 -e "SELECT release_version FROM system.local" >/dev/null 2>&1 || cqlsh -u cassandra -p "$${CASSANDRA_PASSWORD}" 127.0.0.1 9042 -e "SELECT release_version FROM system.local" >/dev/null 2>&1',
+        ]
+      start_period: 120s
+      interval: 20s
+      timeout: 10s
+      retries: 12
+
+  cassandra-init:
+    image: cassandra:5.0
+    container_name: ent-cassandra-init
+    networks:
+      - ent-network
+    environment:
+      CASSANDRA_PASSWORD: ${CASSANDRA_PASSWORD:-ChangeMe_123!}
+      CASSANDRA_KEYSPACE: ${CASSANDRA_KEYSPACE:-ent_est}
+    volumes:
+      - ./infra/compose/cassandra/init-cassandra.sh:/scripts/init-cassandra.sh:ro
+    entrypoint: ["/bin/bash", "/scripts/init-cassandra.sh"]
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    restart: "no"
+
+  redis:
+    <<: *common
+    image: redis:7-alpine
+    container_name: ent-redis
+    command:
+      ["redis-server", "--requirepass", "${REDIS_PASSWORD:-ChangeMe_123!}"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "redis-cli -a ${REDIS_PASSWORD:-ChangeMe_123!} ping | grep PONG",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    <<: *common
+    image: axllent/mailpit:v1.18
+    container_name: ent-mailpit
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+      TZ: ${TZ:-Africa/Casablanca}
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+
+  ms-auth-core:
+    <<: *common
+    build:
+      context: ./services/ms-auth-core
+      dockerfile: Dockerfile
+    container_name: ent-ms-auth-core
+    environment:
+      AUTH_REALM: ${AUTH_REALM:-ent-est}
+      AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:8080/realms/ent-est}
+      AUTH_JWKS_URL: ${AUTH_JWKS_URL:-http://keycloak:8080/realms/ent-est/protocol/openid-connect/certs}
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-ent-gateway,ent-frontend}
+      AUTH_VERIFY_AUDIENCE: ${AUTH_VERIFY_AUDIENCE:-true}
+      TZ: ${TZ:-Africa/Casablanca}
+    ports:
+      - "${MS_AUTH_CORE_PORT:-8010}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/auth/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      keycloak:
+        condition: service_started
+      keycloak-realm-bootstrap:
+        condition: service_completed_successfully
+      keycloak-users-bootstrap:
+        condition: service_completed_successfully
+
+  ms-api-gateway:
+    <<: *common
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: ent-ms-api-gateway
+    environment:
+      AUTH_CORE_BASE_URL: ${AUTH_CORE_BASE_URL:-http://ms-auth-core:8000}
+      GATEWAY_TIMEOUT_SECONDS: ${GATEWAY_TIMEOUT_SECONDS:-8}
+      GATEWAY_COURSE_CONTENT_URL: ${GATEWAY_COURSE_CONTENT_URL:-http://ms-course-content:8000}
+      GATEWAY_COURSE_ACCESS_URL: ${GATEWAY_COURSE_ACCESS_URL:-http://ms-course-access:8000}
+      GATEWAY_IDENTITY_ADMIN_URL: ${GATEWAY_IDENTITY_ADMIN_URL:-http://ms-identity-admin:8000}
+      GATEWAY_NOTIFICATION_URL: ${GATEWAY_NOTIFICATION_URL:-http://ms-notification:8000}
+      TZ: ${TZ:-Africa/Casablanca}
+    ports:
+      - "${MS_API_GATEWAY_PORT:-8008}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/gateway/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      ms-auth-core:
+        condition: service_healthy
+      ms-identity-admin:
+        condition: service_healthy
+      ms-course-content:
+        condition: service_healthy
+      ms-course-access:
+        condition: service_healthy
+      ms-notification:
+        condition: service_healthy
+
+  ms-identity-admin:
+    <<: *common
+    build:
+      context: ./services/ms-identity-admin
+      dockerfile: Dockerfile
+    container_name: ent-ms-identity-admin
+    environment:
+      AUTH_CORE_BASE_URL: ${AUTH_CORE_BASE_URL:-http://ms-auth-core:8000}
+      IDENTITY_ADMIN_TIMEOUT_SECONDS: ${IDENTITY_ADMIN_TIMEOUT_SECONDS:-8}
+      IDENTITY_ADMIN_ALLOWED_ROLES: ${IDENTITY_ADMIN_ALLOWED_ROLES:-admin}
+      KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-ent-est}
+      KEYCLOAK_ADMIN_REALM: ${KEYCLOAK_ADMIN_REALM:-master}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-ChangeMe_123!}
+      CASSANDRA_CONTACT_POINTS: ${CASSANDRA_CONTACT_POINTS:-cassandra}
+      CASSANDRA_PORT: ${CASSANDRA_PORT:-9042}
+      CASSANDRA_USERNAME: ${CASSANDRA_USERNAME:-cassandra}
+      CASSANDRA_PASSWORD: ${CASSANDRA_PASSWORD:-ChangeMe_123!}
+      CASSANDRA_KEYSPACE: ${CASSANDRA_KEYSPACE:-ent_est}
+      IDENTITY_ADMIN_PROFILE_TABLE: ${IDENTITY_ADMIN_PROFILE_TABLE:-user_profiles}
+      TZ: ${TZ:-Africa/Casablanca}
+    ports:
+      - "${MS_IDENTITY_ADMIN_PORT:-8013}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/identity-admin/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      ms-auth-core:
+        condition: service_healthy
+      keycloak-realm-bootstrap:
+        condition: service_completed_successfully
+      keycloak-users-bootstrap:
+        condition: service_completed_successfully
+      cassandra:
+        condition: service_healthy
+      cassandra-init:
+        condition: service_completed_successfully
+
+  ms-course-content:
+    <<: *common
+    build:
+      context: ./services/ms-course-content
+      dockerfile: Dockerfile
+    container_name: ent-ms-course-content
+    environment:
+      AUTH_CORE_BASE_URL: ${AUTH_CORE_BASE_URL:-http://ms-auth-core:8000}
+      COURSE_CONTENT_ALLOWED_ROLES: ${COURSE_CONTENT_ALLOWED_ROLES:-teacher,admin}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-dev-internal-token}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ChangeMe_123!}
+      MINIO_COURSE_BUCKET: ${MINIO_COURSE_BUCKET:-ent-courses}
+      COURSE_CONTENT_TIMEOUT_SECONDS: ${COURSE_CONTENT_TIMEOUT_SECONDS:-8}
+      CASSANDRA_CONTACT_POINTS: ${CASSANDRA_CONTACT_POINTS:-cassandra}
+      CASSANDRA_PORT: ${CASSANDRA_PORT:-9042}
+      CASSANDRA_USERNAME: ${CASSANDRA_USERNAME:-cassandra}
+      CASSANDRA_PASSWORD: ${CASSANDRA_PASSWORD:-ChangeMe_123!}
+      CASSANDRA_KEYSPACE: ${CASSANDRA_KEYSPACE:-ent_est}
+      COURSE_CONTENT_COURSES_TABLE: ${COURSE_CONTENT_COURSES_TABLE:-courses}
+      COURSE_CONTENT_ASSETS_TABLE: ${COURSE_CONTENT_ASSETS_TABLE:-course_assets}
+      TZ: ${TZ:-Africa/Casablanca}
+    ports:
+      - "${MS_COURSE_CONTENT_PORT:-8011}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/courses-content/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      ms-auth-core:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+      cassandra:
+        condition: service_healthy
+      cassandra-init:
+        condition: service_completed_successfully
+
+  ms-course-access:
+    <<: *common
+    build:
+      context: ./services/ms-course-access
+      dockerfile: Dockerfile
+    container_name: ent-ms-course-access
+    environment:
+      AUTH_CORE_BASE_URL: ${AUTH_CORE_BASE_URL:-http://ms-auth-core:8000}
+      COURSE_CONTENT_BASE_URL: ${COURSE_CONTENT_BASE_URL:-http://ms-course-content:8000}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-dev-internal-token}
+      COURSE_ACCESS_ALLOWED_ROLES: ${COURSE_ACCESS_ALLOWED_ROLES:-student}
+      COURSE_ACCESS_TIMEOUT_SECONDS: ${COURSE_ACCESS_TIMEOUT_SECONDS:-8}
+      MINIO_SIGNING_ENDPOINT: ${MINIO_SIGNING_ENDPOINT:-http://localhost:9002}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ChangeMe_123!}
+      MINIO_COURSE_BUCKET: ${MINIO_COURSE_BUCKET:-ent-courses}
+      COURSE_DOWNLOAD_TTL_SECONDS: ${COURSE_DOWNLOAD_TTL_SECONDS:-180}
+      TZ: ${TZ:-Africa/Casablanca}
+    ports:
+      - "${MS_COURSE_ACCESS_PORT:-8012}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/courses-access/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      ms-auth-core:
+        condition: service_healthy
+      ms-course-content:
+        condition: service_healthy
+
+  ms-notification:
+    <<: *common
+    build:
+      context: ./services/ms-notification
+      dockerfile: Dockerfile
+    container_name: ent-ms-notification
+    environment:
+      RABBITMQ_URL: ${NOTIFICATION_RABBITMQ_URL:-amqp://ent:ChangeMe_123!@rabbitmq:5672/}
+      EVENTS_EXCHANGE: ${EVENTS_EXCHANGE:-ent.events.topic}
+      NOTIF_QUEUE: ${NOTIF_QUEUE:-q.notification.user}
+      NOTIFICATION_ENABLE_CONSUMER: ${NOTIFICATION_ENABLE_CONSUMER:-true}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-noreply@ent-est.local}
+      NOTIFICATION_ENABLE_SMTP: ${NOTIFICATION_ENABLE_SMTP:-true}
+      CASSANDRA_CONTACT_POINTS: ${CASSANDRA_CONTACT_POINTS:-cassandra}
+      CASSANDRA_PORT: ${CASSANDRA_PORT:-9042}
+      CASSANDRA_USERNAME: ${CASSANDRA_USERNAME:-cassandra}
+      CASSANDRA_PASSWORD: ${CASSANDRA_PASSWORD:-ChangeMe_123!}
+      CASSANDRA_KEYSPACE: ${CASSANDRA_KEYSPACE:-ent_est}
+      NOTIFICATIONS_TABLE: ${NOTIFICATIONS_TABLE:-notifications}
+      TZ: ${TZ:-Africa/Casablanca}
+    ports:
+      - "${MS_NOTIFICATION_PORT:-8014}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/notifications/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      cassandra:
+        condition: service_healthy
+      cassandra-init:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+
+  frontend:
+    <<: *common
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ent-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      ms-api-gateway:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+networks:
+  ent-network:
+    name: ent-network
+    driver: bridge
+
+volumes:
+  keycloak_postgres_data:
+  rabbitmq_data:
+  minio_data:
+  cassandra_data:
+  redis_data:
