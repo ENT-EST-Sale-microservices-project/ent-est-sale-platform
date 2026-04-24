@@ -68,6 +68,7 @@ db_session = None
 insert_notif_stmt = None
 select_notifs_by_user_stmt = None
 select_notifs_all_stmt = None
+update_notif_read_stmt = None
 
 connection: aio_pika.abc.AbstractRobustConnection | None = None
 consumer_task: asyncio.Task | None = None
@@ -88,7 +89,7 @@ def _now_iso() -> str:
 
 
 def _ensure_db() -> None:
-    global cluster, db_session, insert_notif_stmt, select_notifs_by_user_stmt, select_notifs_all_stmt
+    global cluster, db_session, insert_notif_stmt, select_notifs_by_user_stmt, select_notifs_all_stmt, update_notif_read_stmt
 
     if db_session is not None:
         return
@@ -138,6 +139,9 @@ def _ensure_db() -> None:
     select_notifs_all_stmt = db_session.prepare(
         "SELECT user_id, created_at, notif_id, event_type, title, body, correlation_id, read "
         f"FROM {NOTIFICATIONS_TABLE} LIMIT ?"
+    )
+    update_notif_read_stmt = db_session.prepare(
+        f"UPDATE {NOTIFICATIONS_TABLE} SET read = true WHERE user_id = ? AND created_at = ? AND notif_id = ?"
     )
 
 
@@ -196,6 +200,9 @@ _EVENT_SUBJECT_MAP = {
     "course.deleted.v1": "Course Removed",
     "asset.uploaded.v1": "New Course Material",
     "user.role.assigned.v1": "Role Updated",
+    "assignment.published.v1": "New Assignment Published",
+    "assignment.submitted.v1": "Assignment Submission Received",
+    "grade.published.v1": "Your Assignment Has Been Graded",
 }
 
 
@@ -230,6 +237,10 @@ async def _consume_events() -> None:
     await queue.bind(exchange, "user.*")
     await queue.bind(exchange, "course.*")
     await queue.bind(exchange, "asset.*")
+    await queue.bind(exchange, "assignment.*")
+    await queue.bind(exchange, "grade.*")
+    await queue.bind(exchange, "forum.*")
+    await queue.bind(exchange, "calendar.*")
 
     async with queue.iterator() as queue_iter:
         async for message in queue_iter:
@@ -242,6 +253,14 @@ async def _consume_events() -> None:
                 user_id = event_payload.get("user_id")
                 if not user_id and event_type.startswith("course."):
                     user_id = event_payload.get("teacher_id", "all-students")
+                if not user_id and event_type.startswith("assignment."):
+                    user_id = event_payload.get("created_by") or event_payload.get("student_id", "all-students")
+                if not user_id and event_type.startswith("grade."):
+                    user_id = event_payload.get("student_id", "unknown")
+                if not user_id and event_type.startswith("forum."):
+                    user_id = event_payload.get("author_id")
+                if not user_id and event_type.startswith("calendar."):
+                    user_id = event_payload.get("created_by")
                 if not user_id:
                     continue
 
@@ -332,3 +351,31 @@ def list_notifications(
     if not user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
     return _get_notifications(user_id, limit=limit)
+
+
+@app.patch("/notifications/{user_id}/{notif_id}/read", tags=["notification"])
+def mark_one_read(user_id: str, notif_id: str) -> dict[str, Any]:
+    if not user_id or not notif_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id and notif_id are required")
+    _ensure_db()
+    rows = list(db_session.execute(select_notifs_by_user_stmt, (user_id, 200)))
+    for row in rows:
+        if row.notif_id == notif_id:
+            if not row.read:
+                db_session.execute(update_notif_read_stmt, (user_id, row.created_at, row.notif_id))
+            return {"marked_read": not row.read}
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+
+
+@app.patch("/notifications/{user_id}/read-all", tags=["notification"])
+def mark_all_read(user_id: str) -> dict[str, Any]:
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
+    _ensure_db()
+    rows = list(db_session.execute(select_notifs_by_user_stmt, (user_id, 200)))
+    count = 0
+    for row in rows:
+        if not row.read:
+            db_session.execute(update_notif_read_stmt, (user_id, row.created_at, row.notif_id))
+            count += 1
+    return {"marked_read": count}

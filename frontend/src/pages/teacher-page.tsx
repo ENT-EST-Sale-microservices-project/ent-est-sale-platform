@@ -140,17 +140,20 @@ export function TeacherPage() {
     }
   }
 
+  const [deletingCourseId, setDeletingCourseId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState('')
+
   async function deleteCourse(courseId: string) {
-    if (!confirm('Are you sure you want to delete this course and all its assets?')) return
-    
+    setDeletingCourseId(courseId)
+    setDeleteError('')
     try {
-      await apiFetch(`/api/content/courses/${courseId}`, {
-        method: 'DELETE',
-      })
+      await apiFetch(`/api/content/courses/${courseId}`, { method: 'DELETE' })
       setCourses(prev => prev.filter(c => c.course_id !== courseId))
     } catch (err) {
-      console.error('Delete failed:', err)
-      alert('Failed to delete course.')
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete course')
+      setTimeout(() => setDeleteError(''), 4000)
+    } finally {
+      setDeletingCourseId(null)
     }
   }
 
@@ -160,6 +163,9 @@ export function TeacherPage() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Course Studio</h2>
           <p className="text-muted-foreground">Create courses and manage learning materials.</p>
+          {deleteError && (
+            <p className="text-sm text-destructive mt-1">{deleteError}</p>
+          )}
         </div>
         
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -251,13 +257,18 @@ export function TeacherPage() {
                       <span className="text-xs font-semibold tracking-wider text-primary uppercase">
                         {course.module_code}
                       </span>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="size-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
                         onClick={() => deleteCourse(course.course_id)}
+                        disabled={deletingCourseId === course.course_id}
+                        title="Delete course"
                       >
-                        <Trash2 className="size-3.5" />
+                        {deletingCourseId === course.course_id
+                          ? <Loader2 className="size-3.5 animate-spin" />
+                          : <Trash2 className="size-3.5" />
+                        }
                       </Button>
                     </div>
                     <CardTitle className="text-lg leading-tight truncate" title={course.title}>

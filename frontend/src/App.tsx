@@ -10,6 +10,9 @@ import { TeacherPage } from '@/pages/teacher-page'
 import { NotificationsPage } from '@/pages/notifications-page'
 import { ProfilePage } from '@/pages/profile-page'
 import { UnauthorizedPage } from '@/pages/unauthorized-page'
+import { CalendarPage } from '@/pages/calendar-page'
+import { ForumPage } from '@/pages/forum-page'
+import { ExamPage } from '@/pages/exam-page'
 
 export default function App() {
   return (
@@ -53,6 +56,9 @@ export default function App() {
             </RoleRoute>
           }
         />
+        <Route path="calendar" element={<CalendarPage />} />
+        <Route path="forum" element={<ForumPage />} />
+        <Route path="exams" element={<ExamPage />} />
       </Route>
 
       <Route path="*" element={<NotFoundPage />} />

@@ -35,6 +35,7 @@ export function StudentPage() {
   const [detailsLoading, setDetailsLoading] = useState(false)
   
   const [downloadingAssetId, setDownloadingAssetId] = useState<string | null>(null)
+  const [downloadError, setDownloadError] = useState('')
 
   const loadCourses = useCallback(async () => {
     setLoading(true)
@@ -90,7 +91,8 @@ export function StudentPage() {
       
     } catch (err) {
       console.error('Generate link failed:', err)
-      alert('Failed to generate download link.')
+      setDownloadError('Failed to generate download link. Please try again.')
+      setTimeout(() => setDownloadError(''), 4000)
     } finally {
       setDownloadingAssetId(null)
     }
@@ -107,6 +109,7 @@ export function StudentPage() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Course Catalog</h2>
           <p className="text-muted-foreground">Browse available courses and download learning materials.</p>
+          {downloadError && <p className="text-sm text-destructive mt-1">{downloadError}</p>}
         </div>
         
         <div className="relative w-full sm:max-w-xs">
