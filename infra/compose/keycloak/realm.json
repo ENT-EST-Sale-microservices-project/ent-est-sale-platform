@@ -1,6 +1,7 @@
 {
   "realm": "ent-est",
   "enabled": true,
+  "sslRequired": "none",
   "displayName": "ENT EST Sale",
   "roles": {
     "realm": [
