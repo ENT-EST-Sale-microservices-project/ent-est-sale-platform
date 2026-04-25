@@ -49,7 +49,7 @@ export function AssistantPage() {
       {
         id: 'welcome',
         role: 'assistant',
-        content: `Hello! I'm your AI assistant for ENT EST Salé. How can I help you today?\n\nI can help you with:\n• Questions about courses and the platform\n• Summarizing course content\n• Generating FAQs\n• Academic guidance\n\nWhat would you like to know?`,
+        content: `Hello! I'm ENT Assistant, powered by Llama 3.\n\nI can help you with:\n• Your upcoming assignments & deadlines\n• This month's calendar events and exam schedule\n• Questions about courses and the platform\n• Academic guidance and summarizing content\n\nJust ask me anything — try: "What assignments do I have?" or "What's on the calendar this month?"`,
         timestamp: new Date(),
         model: 'llama3',
       },
@@ -80,7 +80,7 @@ export function AssistantPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: 'current-user',
+          user_id: 'me',
           role: primaryRole,
           question: userMessage.content,
           context_refs: [],
@@ -126,7 +126,7 @@ export function AssistantPage() {
       {
         id: 'welcome',
         role: 'assistant',
-        content: `Hello! I'm your AI assistant for ENT EST Salé. How can I help you today?\n\nI can help you with:\n• Questions about courses and the platform\n• Summarizing course content\n• Generating FAQs\n• Academic guidance\n\nWhat would you like to know?`,
+        content: `Hello! I'm ENT Assistant, powered by Llama 3.\n\nI can help you with:\n• Your upcoming assignments & deadlines\n• This month's calendar events and exam schedule\n• Questions about courses and the platform\n• Academic guidance and summarizing content\n\nJust ask me anything — try: "What assignments do I have?" or "What's on the calendar this month?"`,
         timestamp: new Date(),
         model: 'llama3',
       },

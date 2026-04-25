@@ -18,8 +18,9 @@ type UserProfile = {
   email?: string
   first_name?: string
   last_name?: string
-  role?: string
-  status: string
+  roles?: string[]
+  enabled?: boolean
+  status?: string
 }
 
 export function AdminPage() {
@@ -104,7 +105,8 @@ export function AdminPage() {
 
   const filteredUsers = users.filter(u =>
     u.username.toLowerCase().includes(search.toLowerCase()) ||
-    (u.email && u.email.toLowerCase().includes(search.toLowerCase()))
+    (u.email && u.email.toLowerCase().includes(search.toLowerCase())) ||
+    (`${u.first_name ?? ''} ${u.last_name ?? ''}`.toLowerCase().includes(search.toLowerCase()))
   )
 
   return (
@@ -223,14 +225,19 @@ export function AdminPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">{user.email || '-'}</TableCell>
                     <TableCell>
-                      <Badge variant={roleBadgeVariant(user.role)} className="capitalize tracking-wide text-[10px]">
-                        {user.role || 'none'}
-                      </Badge>
+                      <div className="flex flex-wrap gap-1">
+                        {user.roles && user.roles.filter(r => ['admin', 'teacher', 'student'].includes(r)).length > 0
+                          ? user.roles.filter(r => ['admin', 'teacher', 'student'].includes(r)).map(r => (
+                              <Badge key={r} variant={roleBadgeVariant(r)} className="capitalize tracking-wide text-[10px]">{r}</Badge>
+                            ))
+                          : <Badge variant="outline" className="text-[10px]">no role</Badge>
+                        }
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
-                        <span className={`size-2 rounded-full ${user.status === 'ACTIVE' || user.status === 'enabled' ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                        <span className="text-xs text-muted-foreground capitalize">{user.status}</span>
+                        <span className={`size-2 rounded-full ${user.enabled !== false ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                        <span className="text-xs text-muted-foreground">{user.enabled !== false ? 'Active' : 'Disabled'}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-right pr-6">
@@ -240,13 +247,13 @@ export function AdminPage() {
                           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                             Change Role
                           </div>
-                          <DropdownMenuItem onClick={() => patchRoleAction(user.user_id, 'student')} disabled={user.role === 'student'}>
+                          <DropdownMenuItem onClick={() => patchRoleAction(user.user_id, 'student')} disabled={user.roles?.includes('student')}>
                             Student
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => patchRoleAction(user.user_id, 'teacher')} disabled={user.role === 'teacher'}>
+                          <DropdownMenuItem onClick={() => patchRoleAction(user.user_id, 'teacher')} disabled={user.roles?.includes('teacher')}>
                             Teacher
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => patchRoleAction(user.user_id, 'admin')} disabled={user.role === 'admin'}>
+                          <DropdownMenuItem onClick={() => patchRoleAction(user.user_id, 'admin')} disabled={user.roles?.includes('admin')}>
                             <ShieldAlert className="size-3 mr-2 text-destructive" />
                             Admin
                           </DropdownMenuItem>

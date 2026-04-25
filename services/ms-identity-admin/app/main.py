@@ -62,6 +62,7 @@ class CreateUserRequest(BaseModel):
     email: str = Field(min_length=5, max_length=255)
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
+    password: str | None = Field(default=None, min_length=6, max_length=255)
     roles: list[str] = Field(default_factory=lambda: ["student"])
     enabled: bool = Field(default=True)
 
@@ -166,7 +167,7 @@ async def require_admin(
 async def _get_keycloak_token() -> str:
     global keycloak_access_token, keycloak_token_expires
 
-    if keycloak_access_token and keycloak_token_expires and datetime.now(timezone.utc) < keycloak_token_expires:
+    if keycloak_access_token and keycloak_token_expires and datetime.now(timezone.utc).timestamp() < keycloak_token_expires:
         return keycloak_access_token
 
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
@@ -212,8 +213,8 @@ async def _create_keycloak_user(user_data: CreateUserRequest) -> str:
                 "credentials": [
                     {
                         "type": "password",
-                        "value": "ChangeMe_123!",
-                        "temporary": True,
+                        "value": user_data.password or "ChangeMe_123!",
+                        "temporary": user_data.password is None,
                     }
                 ],
             },
@@ -236,35 +237,75 @@ async def _create_keycloak_user(user_data: CreateUserRequest) -> str:
     return user_id
 
 
+_APP_ROLES = {"student", "teacher", "admin"}
+
+
 async def _set_keycloak_roles(user_id: str, roles: list[str]) -> None:
     token = await _get_keycloak_token()
+    headers_auth = {"Authorization": f"Bearer {token}"}
 
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
-        # Get available realm roles
-        resp = await client.get(
+        available_resp = await client.get(
             f"{KEYCLOAK_BASE_URL}/admin/realms/{KEYCLOAK_REALM}/roles",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=headers_auth,
+        )
+        current_resp = await client.get(
+            f"{KEYCLOAK_BASE_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}/role-mappings/realm",
+            headers=headers_auth,
         )
 
-    if resp.status_code != 200:
+    if available_resp.status_code != 200:
         return
 
-    available_roles = {r["name"]: r for r in resp.json()}
-    role_reprs = []
-    for role_name in roles:
-        if role_name in available_roles:
-            role_reprs.append(available_roles[role_name])
+    available_roles = {r["name"]: r for r in available_resp.json()}
+    current_roles = current_resp.json() if current_resp.status_code == 200 else []
 
+    roles_to_remove = [r for r in current_roles if r["name"] in _APP_ROLES and r["name"] not in roles]
+    if roles_to_remove:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+            await client.request(
+                "DELETE",
+                f"{KEYCLOAK_BASE_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}/role-mappings/realm",
+                headers={**headers_auth, "Content-Type": "application/json"},
+                json=roles_to_remove,
+            )
+
+    role_reprs = [available_roles[r] for r in roles if r in available_roles]
     if role_reprs:
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
             await client.post(
                 f"{KEYCLOAK_BASE_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}/role-mappings/realm",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
+                headers={**headers_auth, "Content-Type": "application/json"},
                 json=role_reprs,
             )
+
+
+_KС_SYSTEM_ROLES = {"offline_access", "uma_authorization", f"default-roles-{KEYCLOAK_REALM}"}
+
+
+async def _get_keycloak_users() -> list[dict]:
+    token = await _get_keycloak_token()
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp = await client.get(
+            f"{KEYCLOAK_BASE_URL}/admin/realms/{KEYCLOAK_REALM}/users",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"max": 1000},
+        )
+    if resp.status_code != 200:
+        return []
+    return resp.json()
+
+
+async def _get_keycloak_user_roles(keycloak_id: str) -> list[str]:
+    token = await _get_keycloak_token()
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp = await client.get(
+            f"{KEYCLOAK_BASE_URL}/admin/realms/{KEYCLOAK_REALM}/users/{keycloak_id}/role-mappings/realm",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    if resp.status_code != 200:
+        return []
+    return [r["name"] for r in resp.json() if r["name"] not in _KС_SYSTEM_ROLES]
 
 
 async def _update_keycloak_user(user_id: str, keycloak_id: str, update_data: UpdateUserRequest) -> None:
@@ -345,7 +386,7 @@ def _ensure_db() -> None:
         "INSERT INTO "
         f"{PROFILE_TABLE} "
         "(user_id, username, email, first_name, last_name, roles, enabled, keycloak_id, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     update_profile_stmt = db_session.prepare(
         "UPDATE "
@@ -450,12 +491,75 @@ async def create_user(
 
 
 @app.get("/admin/users", response_model=list[UserProfileResponse], tags=["identity-admin"])
-def list_users(
+async def list_users(
     _: dict[str, Any] = Depends(require_admin),
 ) -> list[UserProfileResponse]:
     _ensure_db()
+
+    kc_users = await _get_keycloak_users()
+
     rows = db_session.execute(select_profiles_stmt)
-    return [UserProfileResponse(**_serialize_profile(row)) for row in rows]
+    cassandra_by_kc_id: dict[str, dict] = {}
+    cassandra_by_username: dict[str, dict] = {}
+    for row in rows:
+        p = _serialize_profile(row)
+        if p.get("keycloak_id"):
+            cassandra_by_kc_id[p["keycloak_id"]] = p
+        cassandra_by_username[p["username"]] = p
+
+    now = _timestamp()
+
+    async def _build_and_sync(kc_user: dict) -> UserProfileResponse:
+        kc_id = kc_user["id"]
+        username = kc_user.get("username", "")
+        roles = await _get_keycloak_user_roles(kc_id)
+        cas = cassandra_by_kc_id.get(kc_id) or cassandra_by_username.get(username)
+
+        if cas is None:
+            # Bootstrap user exists in Keycloak but not Cassandra — insert now
+            db_session.execute(
+                insert_profile_stmt,
+                (
+                    kc_id,
+                    username,
+                    kc_user.get("email", ""),
+                    kc_user.get("firstName", ""),
+                    kc_user.get("lastName", ""),
+                    roles,
+                    kc_user.get("enabled", True),
+                    kc_id,
+                    now,
+                    now,
+                ),
+            )
+            cas = {
+                "user_id": kc_id,
+                "username": username,
+                "email": kc_user.get("email", ""),
+                "first_name": kc_user.get("firstName", ""),
+                "last_name": kc_user.get("lastName", ""),
+                "roles": roles,
+                "enabled": kc_user.get("enabled", True),
+                "keycloak_id": kc_id,
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+            }
+
+        return UserProfileResponse(
+            user_id=cas["user_id"],
+            username=kc_user.get("username", cas["username"]),
+            email=kc_user.get("email", cas["email"]),
+            first_name=kc_user.get("firstName", cas["first_name"]),
+            last_name=kc_user.get("lastName", cas["last_name"]),
+            roles=roles or cas["roles"],
+            enabled=kc_user.get("enabled", cas["enabled"]),
+            keycloak_id=kc_id,
+            created_at=cas["created_at"],
+            updated_at=cas["updated_at"],
+        )
+
+    results = await asyncio.gather(*[_build_and_sync(u) for u in kc_users], return_exceptions=True)
+    return [r for r in results if isinstance(r, UserProfileResponse)]
 
 
 @app.get("/admin/users/{user_id}", response_model=UserProfileResponse, tags=["identity-admin"])

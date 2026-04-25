@@ -38,7 +38,7 @@ services:
       - --http-port=8080
       - --health-enabled=true
       - --metrics-enabled=true
-      - --hostname=${KEYCLOAK_HOSTNAME:-localhost}
+      - --hostname-strict=false
     environment:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-ChangeMe_123!}
@@ -307,6 +307,7 @@ services:
       GATEWAY_FORUM_URL: ${GATEWAY_FORUM_URL:-http://ms-forum-chat:8000}
       GATEWAY_EXAM_URL: ${GATEWAY_EXAM_URL:-http://ms-exam-assignment:8000}
       GATEWAY_AI_URL: ${GATEWAY_AI_URL:-http://ms-ai-assistant:8000}
+      GATEWAY_CORS_ORIGINS: ${GATEWAY_CORS_ORIGINS:-*}
       TZ: ${TZ:-Africa/Casablanca}
     ports:
       - "${MS_API_GATEWAY_PORT:-8008}:8000"
@@ -674,6 +675,9 @@ services:
       RABBITMQ_URL: ${NOTIFICATION_RABBITMQ_URL:-amqp://ent:ChangeMe_123!@rabbitmq:5672/}
       EVENTS_EXCHANGE: ${EVENTS_EXCHANGE:-ent.events.topic}
       AI_QUEUE: ${AI_QUEUE:-q.ai.context}
+      CALENDAR_BASE_URL: ${CALENDAR_BASE_URL:-http://ms-calendar-schedule:8000}
+      EXAM_BASE_URL: ${EXAM_BASE_URL:-http://ms-exam-assignment:8000}
+      NOTIFICATION_BASE_URL: ${NOTIFICATION_BASE_URL:-http://ms-notification:8000}
       TZ: ${TZ:-Africa/Casablanca}
     ports:
       - "${MS_AI_PORT:-8018}:8000"
@@ -702,7 +706,7 @@ services:
       dockerfile: Dockerfile
     container_name: ent-frontend
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_PORT:-80}:80"
     depends_on:
       ms-api-gateway:
         condition: service_healthy

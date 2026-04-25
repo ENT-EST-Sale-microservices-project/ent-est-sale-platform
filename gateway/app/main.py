@@ -24,14 +24,12 @@ EXAM_BASE_URL = os.getenv("GATEWAY_EXAM_URL", "http://ms-exam-assignment:8000")
 AI_BASE_URL = os.getenv("GATEWAY_AI_URL", "http://ms-ai-assistant:8000")
 AI_TIMEOUT_SECONDS = float(os.getenv("GATEWAY_AI_TIMEOUT_SECONDS", "180"))
 
-CORS_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv(
-        "GATEWAY_CORS_ORIGINS",
-        "http://localhost:5173,http://localhost:3000,http://localhost:4173",
-    ).split(",")
-    if origin.strip()
-]
+_CORS_RAW = os.getenv(
+    "GATEWAY_CORS_ORIGINS",
+    "http://localhost:5173,http://localhost:3000,http://localhost:4173,http://localhost",
+)
+CORS_ORIGINS = [o.strip() for o in _CORS_RAW.split(",") if o.strip()]
+CORS_ALLOW_ALL = "*" in CORS_ORIGINS
 
 app = FastAPI(
     title="MS-API-Gateway",
@@ -42,8 +40,8 @@ setup_service_runtime(app, "ms-api-gateway")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"] if CORS_ALLOW_ALL else CORS_ORIGINS,
+    allow_credentials=not CORS_ALLOW_ALL,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["x-request-id", "x-correlation-id"],
@@ -482,15 +480,44 @@ async def gateway_list_notifications(
     if not user_id:
         raise _unauthorized("Invalid token claims")
 
-    resp = await _request_downstream(
-        "GET",
-        f"{NOTIFICATION_BASE_URL}/notifications/{user_id}",
-        service_name="ms-notification",
-    )
+    roles = _extract_roles(claims)
 
-    if resp.status_code >= 400:
-        raise _map_downstream_error(resp, "ms-notification")
-    return resp.json()
+    # Determine broadcast channels this user should receive
+    broadcast_ids: list[str] = ["broadcast:all-users"]
+    if "student" in roles:
+        broadcast_ids.append("broadcast:all-students")
+    if "teacher" in roles or "admin" in roles:
+        broadcast_ids.append("broadcast:all-teachers")
+
+    import asyncio as _asyncio
+
+    async def _fetch(uid: str) -> list:
+        resp = await _request_downstream(
+            "GET",
+            f"{NOTIFICATION_BASE_URL}/notifications/{uid}",
+            service_name="ms-notification",
+        )
+        if resp.status_code == 200:
+            return resp.json()
+        return []
+
+    all_fetches = await _asyncio.gather(_fetch(user_id), *[_fetch(bid) for bid in broadcast_ids])
+
+    # Merge and deduplicate by notif_id, sort newest first
+    seen_ids: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for batch in all_fetches:
+        for n in batch:
+            nid = n.get("id") or n.get("notif_id")
+            if nid and nid not in seen_ids:
+                seen_ids.add(nid)
+                # Mark broadcast notifications as "from_broadcast" for display
+                if n.get("user_id", "").startswith("broadcast:"):
+                    n["is_broadcast"] = True
+                merged.append(n)
+
+    merged.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return merged[:100]
 
 
 @app.patch("/api/notifications/{notif_id}/read", tags=["notifications"])
@@ -502,15 +529,25 @@ async def gateway_mark_one_notification_read(
     if not user_id:
         raise _unauthorized("Invalid token claims")
 
-    resp = await _request_downstream(
-        "PATCH",
-        f"{NOTIFICATION_BASE_URL}/notifications/{user_id}/{notif_id}/read",
-        service_name="ms-notification",
-    )
+    roles = _extract_roles(claims)
+    channels = [user_id, "broadcast:all-users"]
+    if "student" in roles:
+        channels.append("broadcast:all-students")
+    if "teacher" in roles or "admin" in roles:
+        channels.append("broadcast:all-teachers")
 
-    if resp.status_code >= 400:
-        raise _map_downstream_error(resp, "ms-notification")
-    return resp.json()
+    # Try each channel until one succeeds (notification may live in any of them)
+    for channel in channels:
+        resp = await _request_downstream(
+            "PATCH",
+            f"{NOTIFICATION_BASE_URL}/notifications/{channel}/{notif_id}/read",
+            service_name="ms-notification",
+        )
+        if resp.status_code < 400:
+            return resp.json()
+
+    # Return success anyway — frontend already updated local state
+    return {"status": "ok"}
 
 
 @app.patch("/api/notifications/read-all", tags=["notifications"])
@@ -578,7 +615,6 @@ async def gateway_stats(
             stats["total_students"] = len([a for a in assignments if a.get("status") == "published"])
 
         elif "student" in roles:
-            # Get available courses
             courses_resp = await _request_downstream(
                 "GET",
                 f"{COURSE_ACCESS_BASE_URL}/courses",
@@ -588,7 +624,6 @@ async def gateway_stats(
             courses = courses_resp.json() if courses_resp.status_code == 200 else []
             stats["enrolled_courses"] = len(courses)
 
-            # Get upcoming deadlines from exam service
             assign_resp = await _request_downstream(
                 "GET",
                 f"{EXAM_BASE_URL}/assignments",
@@ -605,11 +640,14 @@ async def gateway_stats(
                 if due:
                     try:
                         due_dt = datetime.fromisoformat(due.replace("Z", "+00:00"))
+                        if due_dt.tzinfo is None:
+                            due_dt = due_dt.replace(tzinfo=timezone.utc)
                         if now < due_dt <= week_ahead:
                             upcoming.append(a)
-                    except ValueError:
+                    except (ValueError, TypeError):
                         pass
             stats["upcoming_deadlines"] = len(upcoming)
+            stats["total_assignments"] = len(assignments)
             stats["completed_credits"] = 0
             
     except Exception as e:

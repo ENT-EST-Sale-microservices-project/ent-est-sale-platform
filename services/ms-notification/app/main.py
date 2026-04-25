@@ -223,6 +223,116 @@ async def _send_email(to_address: str, subject: str, body_text: str) -> None:
         )
 
 
+# ── Broadcast helpers ────────────────────────────────────────────────────────────
+# Broadcast channels: "broadcast:all-students", "broadcast:all-teachers", "broadcast:all-users"
+# These are special user_ids that any user with matching role can read.
+
+def _broadcast_targets_for_event(event_type: str, event_payload: dict) -> list[str]:
+    """Return list of user_ids (real or broadcast) that should receive this notification."""
+    targets: list[str] = []
+
+    if event_type == "user.created.v1":
+        uid = event_payload.get("user_id")
+        if uid:
+            targets.append(uid)
+
+    elif event_type == "user.role.assigned.v1":
+        uid = event_payload.get("user_id")
+        if uid:
+            targets.append(uid)
+
+    elif event_type in ("course.created.v1", "course.updated.v1"):
+        # Notify the teacher who owns the course AND all students
+        teacher_id = event_payload.get("teacher_id") or event_payload.get("created_by")
+        if teacher_id:
+            targets.append(teacher_id)
+        targets.append("broadcast:all-students")
+
+    elif event_type == "course.deleted.v1":
+        targets.append("broadcast:all-students")
+        teacher_id = event_payload.get("teacher_id") or event_payload.get("created_by")
+        if teacher_id:
+            targets.append(teacher_id)
+
+    elif event_type == "asset.uploaded.v1":
+        # Notify all students
+        targets.append("broadcast:all-students")
+        teacher_id = event_payload.get("uploaded_by") or event_payload.get("teacher_id")
+        if teacher_id:
+            targets.append(teacher_id)
+
+    elif event_type == "assignment.published.v1":
+        # Notify all students
+        targets.append("broadcast:all-students")
+        creator = event_payload.get("created_by")
+        if creator:
+            targets.append(creator)
+
+    elif event_type == "assignment.submitted.v1":
+        # Notify the teacher (creator of the assignment) + the student
+        student_id = event_payload.get("student_id") or event_payload.get("submitted_by")
+        teacher_id = event_payload.get("teacher_id") or event_payload.get("assignment_owner")
+        if student_id:
+            targets.append(student_id)
+        if teacher_id:
+            targets.append(teacher_id)
+        if not targets:
+            targets.append("broadcast:all-teachers")
+
+    elif event_type == "grade.published.v1":
+        # Notify the specific student
+        student_id = event_payload.get("student_id")
+        if student_id:
+            targets.append(student_id)
+        teacher_id = event_payload.get("graded_by")
+        if teacher_id:
+            targets.append(teacher_id)
+
+    elif event_type == "forum.thread.created.v1":
+        # Notify all users (broadcast)
+        targets.append("broadcast:all-users")
+        author_id = event_payload.get("author_id") or event_payload.get("created_by")
+        if author_id:
+            # Don't double-notify the author via broadcast; store personal copy
+            targets = [t for t in targets if t != "broadcast:all-users"]
+            targets.append("broadcast:all-users")
+
+    elif event_type == "forum.message.posted.v1":
+        # Notify thread participants
+        thread_author = event_payload.get("thread_author_id")
+        msg_author = event_payload.get("author_id")
+        if thread_author and thread_author != msg_author:
+            targets.append(thread_author)
+        if msg_author:
+            targets.append(msg_author)
+        if not targets:
+            targets.append("broadcast:all-users")
+
+    elif event_type == "calendar.event.created.v1":
+        # Notify all users (everyone sees the calendar)
+        targets.append("broadcast:all-users")
+        creator = event_payload.get("created_by")
+        if creator:
+            targets.append(creator)
+
+    elif event_type == "calendar.event.updated.v1" or event_type == "calendar.event.deleted.v1":
+        targets.append("broadcast:all-users")
+
+    else:
+        uid = event_payload.get("user_id")
+        if uid:
+            targets.append(uid)
+
+    # Deduplicate preserving order
+    seen: set[str] = set()
+    unique: list[str] = []
+    for t in targets:
+        if t not in seen:
+            seen.add(t)
+            unique.append(t)
+    return unique
+
+
 # ── RabbitMQ Consumer ───────────────────────────────────────────────────────────
 async def _consume_events() -> None:
     global connection
@@ -249,50 +359,36 @@ async def _consume_events() -> None:
                 event_type = payload.get("event_type", "")
                 event_payload = payload.get("payload", {})
                 correlation_id = payload.get("correlation_id")
+                notif_id_base = payload.get("event_id") or str(uuid4())
 
-                user_id = event_payload.get("user_id")
-                if not user_id and event_type.startswith("course."):
-                    user_id = event_payload.get("teacher_id", "all-students")
-                if not user_id and event_type.startswith("assignment."):
-                    user_id = event_payload.get("created_by") or event_payload.get("student_id", "all-students")
-                if not user_id and event_type.startswith("grade."):
-                    user_id = event_payload.get("student_id", "unknown")
-                if not user_id and event_type.startswith("forum."):
-                    user_id = event_payload.get("author_id")
-                if not user_id and event_type.startswith("calendar."):
-                    user_id = event_payload.get("created_by")
-                if not user_id:
+                subject = _EVENT_SUBJECT_MAP.get(event_type, f"Platform Update: {event_type.replace('.', ' ').title()}")
+                body_text = json.dumps(event_payload, indent=2, default=str)
+
+                targets = _broadcast_targets_for_event(event_type, event_payload)
+                if not targets:
+                    logger.info(json.dumps({"event": "notification.skipped", "event_type": event_type, "reason": "no targets"}))
                     continue
 
-                subject = _EVENT_SUBJECT_MAP.get(event_type, f"Notification: {event_type}")
-                body_text = json.dumps(event_payload, indent=2, default=str)
-                notif_id = payload.get("event_id") or str(uuid4())
-
-                # Persist to Cassandra
-                _store_notification(
-                    user_id=user_id,
-                    notif_id=notif_id,
-                    event_type=event_type,
-                    title=subject,
-                    body=body_text,
-                    correlation_id=correlation_id,
-                )
+                for i, target_id in enumerate(targets):
+                    notif_id = f"{notif_id_base}-{i}" if i > 0 else notif_id_base
+                    _store_notification(
+                        user_id=target_id,
+                        notif_id=notif_id,
+                        event_type=event_type,
+                        title=subject,
+                        body=body_text,
+                        correlation_id=correlation_id,
+                    )
+                    logger.info(json.dumps({
+                        "event": "notification.stored",
+                        "user_id": target_id,
+                        "event_type": event_type,
+                    }))
 
                 # Send email if user has an email in the payload
                 email_addr = event_payload.get("email")
                 if email_addr:
                     await _send_email(email_addr, subject, body_text)
-
-                logger.info(
-                    json.dumps(
-                        {
-                            "event": "notification.stored",
-                            "user_id": user_id,
-                            "event_type": event_type,
-                            "correlation_id": correlation_id,
-                        }
-                    )
-                )
 
 
 # ── Lifecycle ───────────────────────────────────────────────────────────────────

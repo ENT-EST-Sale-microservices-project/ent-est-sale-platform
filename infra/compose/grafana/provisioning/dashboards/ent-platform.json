@@ -5,21 +5,50 @@
     { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
     { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
     { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
-    { "type": "panel", "id": "gauge", "name": "Gauge", "version": "" }
+    { "type": "panel", "id": "gauge", "name": "Gauge", "version": "" },
+    { "type": "panel", "id": "table", "name": "Table", "version": "" },
+    { "type": "panel", "id": "barchart", "name": "Bar chart", "version": "" }
   ],
   "annotations": { "list": [] },
-  "description": "ENT EST Salé — microservices platform overview: request rates, error rates, latency, and key business flows.",
+  "description": "ENT EST Salé — complete platform observability: health, RPS, latency, errors, and per-service breakdown.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
   "links": [],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["ent", "microservices", "platform"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "definition": "label_values(ent_http_requests_total, service)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Service",
+        "multi": true,
+        "name": "service",
+        "query": "label_values(ent_http_requests_total, service)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "ENT EST Salé — Platform Dashboard",
+  "uid": "ent-est-platform",
+  "version": 4,
   "panels": [
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "id": 100,
-      "title": "Platform Health",
+      "title": "🟢 Platform Health",
       "type": "row"
     },
     {
@@ -29,8 +58,8 @@
           "color": { "mode": "thresholds" },
           "thresholds": { "mode": "absolute", "steps": [
             { "color": "green", "value": null },
-            { "color": "yellow", "value": 50 },
-            { "color": "red", "value": 200 }
+            { "color": "yellow", "value": 10 },
+            { "color": "red", "value": 50 }
           ]},
           "unit": "reqps",
           "mappings": []
@@ -41,14 +70,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
       "title": "Total RPS",
       "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(rate(ent_http_requests_total[5m]))",
-          "legendFormat": "RPS",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total[5m]))", "legendFormat": "RPS", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
@@ -67,16 +89,9 @@
       "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
       "id": 2,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
-      "title": "5xx Error Rate",
+      "title": "Error Rate",
       "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(rate(ent_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(ent_http_requests_total[5m]))",
-          "legendFormat": "Error %",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(ent_http_requests_total[5m]))", "legendFormat": "Error Rate", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
@@ -85,8 +100,8 @@
           "color": { "mode": "thresholds" },
           "thresholds": { "mode": "absolute", "steps": [
             { "color": "green", "value": null },
-            { "color": "yellow", "value": 0.2 },
-            { "color": "red", "value": 0.4 }
+            { "color": "yellow", "value": 0.5 },
+            { "color": "red", "value": 2 }
           ]},
           "unit": "s",
           "mappings": []
@@ -95,43 +110,9 @@
       "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
       "id": 3,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
-      "title": "P95 Latency (all)",
+      "title": "P99 Latency",
       "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.95, sum by(le) (rate(ent_http_request_duration_seconds_bucket[5m])))",
-          "legendFormat": "p95",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "red", "value": null },
-            { "color": "green", "value": 1 }
-          ]},
-          "unit": "short",
-          "mappings": []
-        }
-      },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
-      "id": 4,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none" },
-      "title": "Active Services",
-      "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "count(count by(service) (ent_http_requests_total))",
-          "legendFormat": "services",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "histogram_quantile(0.99, sum(rate(ent_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P99", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
@@ -140,8 +121,29 @@
           "color": { "mode": "thresholds" },
           "thresholds": { "mode": "absolute", "steps": [
             { "color": "green", "value": null },
-            { "color": "yellow", "value": 10 },
-            { "color": "red", "value": 50 }
+            { "color": "yellow", "value": 0.3 },
+            { "color": "red", "value": 1 }
+          ]},
+          "unit": "s",
+          "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
+      "title": "P50 Latency",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "histogram_quantile(0.50, sum(rate(ent_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P50", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 5 },
+            { "color": "red", "value": 20 }
           ]},
           "unit": "short",
           "mappings": []
@@ -150,16 +152,9 @@
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
       "id": 5,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
-      "title": "4xx Errors / min",
+      "title": "Active Services",
       "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(rate(ent_http_requests_total{status=~\"4..\"}[5m])) * 60",
-          "legendFormat": "4xx/min",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "count(up{job=~\"ms-.*\"} == 1)", "legendFormat": "Up", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
@@ -168,8 +163,7 @@
           "color": { "mode": "thresholds" },
           "thresholds": { "mode": "absolute", "steps": [
             { "color": "green", "value": null },
-            { "color": "yellow", "value": 1 },
-            { "color": "red", "value": 10 }
+            { "color": "red", "value": 1 }
           ]},
           "unit": "short",
           "mappings": []
@@ -177,352 +171,222 @@
       },
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
       "id": 6,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
-      "title": "5xx Errors / min",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none" },
+      "title": "Down Services",
       "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(rate(ent_http_requests_total{status=~\"5..\"}[5m])) * 60",
-          "legendFormat": "5xx/min",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "count(up{job=~\"ms-.*\"} == 0) or vector(0)", "legendFormat": "Down", "refId": "A" }]
     },
+
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
-      "id": 101,
-      "title": "Request Rate by Service",
+      "id": 200,
+      "title": "📈 Request Rates & Errors",
       "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": false },
-          "unit": "reqps"
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
+        "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "id": 10,
-      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
-      "title": "Request Rate per Service (req/s)",
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max"] } },
+      "title": "Requests Per Second — by Service",
       "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by(service) (rate(ent_http_requests_total[5m]))",
-          "legendFormat": "{{service}}",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total[1m])) by (service)", "legendFormat": "{{service}}", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": false },
-          "unit": "percentunit"
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
+        "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
       "id": 11,
-      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
-      "title": "5xx Error Rate per Service",
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max"] } },
+      "title": "HTTP 5xx Errors — by Service",
       "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by(service) (rate(ent_http_requests_total{status=~\"5..\"}[5m])) / sum by(service) (rate(ent_http_requests_total[5m]))",
-          "legendFormat": "{{service}}",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{status=~\"5..\"}[1m])) by (service)", "legendFormat": "{{service}}", "refId": "A" }]
     },
+
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
-      "id": 102,
-      "title": "Latency (P50 / P95 / P99)",
+      "id": 300,
+      "title": "⏱ Latency",
       "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "lineWidth": 2, "fillOpacity": 5, "spanNulls": false },
-          "unit": "s"
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" },
+        "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
       "id": 20,
-      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
-      "title": "P95 Latency per Service",
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "mean", "max"] } },
+      "title": "P99 Request Latency — by Service",
       "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.95, sum by(service, le) (rate(ent_http_request_duration_seconds_bucket[5m])))",
-          "legendFormat": "{{service}} p95",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "histogram_quantile(0.99, sum(rate(ent_http_request_duration_seconds_bucket[5m])) by (le, service))", "legendFormat": "{{service}} P99", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "lineWidth": 2, "fillOpacity": 5, "spanNulls": false },
-          "unit": "s"
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" },
+        "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
       "id": 21,
-      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
-      "title": "P99 Latency per Service",
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "mean", "max"] } },
+      "title": "P50 Request Latency — by Service",
       "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.99, sum by(service, le) (rate(ent_http_request_duration_seconds_bucket[5m])))",
-          "legendFormat": "{{service}} p99",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "histogram_quantile(0.50, sum(rate(ent_http_request_duration_seconds_bucket[5m])) by (le, service))", "legendFormat": "{{service}} P50", "refId": "A" }]
     },
+
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
-      "id": 103,
-      "title": "Key Business Flows",
+      "id": 400,
+      "title": "🔧 Per-Service Breakdown",
       "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
-          "unit": "short",
-          "mappings": []
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
+        "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 24 },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
       "id": 30,
-      "options": { "reduceOptions": { "calcs": ["sum"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
-      "title": "Auth Requests (total)",
-      "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(ent_http_requests_total{service=\"ms-auth-core\"})",
-          "legendFormat": "auth",
-          "refId": "A"
-        }
-      ]
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Gateway — RPS by Route",
+      "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-api-gateway\"}[1m])) by (method, path)", "legendFormat": "{{method}} {{path}}", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
-          "unit": "short",
-          "mappings": []
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
+        "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 24 },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
       "id": 31,
-      "options": { "reduceOptions": { "calcs": ["sum"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
-      "title": "Course Uploads (assets)",
-      "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(ent_http_requests_total{service=\"ms-course-content\", method=\"POST\", status=\"201\"})",
-          "legendFormat": "uploads",
-          "refId": "A"
-        }
-      ]
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Auth Core — Validation Rate",
+      "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-auth-core\"}[1m])) by (status)", "legendFormat": "HTTP {{status}}", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "teal", "value": null }] },
-          "unit": "short",
-          "mappings": []
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
+        "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 24 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
       "id": 32,
-      "options": { "reduceOptions": { "calcs": ["sum"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
-      "title": "Download Links Generated",
-      "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(ent_http_requests_total{service=\"ms-course-access\", method=\"POST\", status=\"200\"})",
-          "legendFormat": "downloads",
-          "refId": "A"
-        }
-      ]
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Identity Admin — CRUD Operations",
+      "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-identity-admin\"}[1m])) by (method)", "legendFormat": "{{method}}", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] },
-          "unit": "short",
-          "mappings": []
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
+        "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 24 },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 32 },
       "id": 33,
-      "options": { "reduceOptions": { "calcs": ["sum"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
-      "title": "Assignment Submissions",
-      "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(ent_http_requests_total{service=\"ms-exam-assignment\", method=\"POST\", status=\"201\"})",
-          "legendFormat": "submissions",
-          "refId": "A"
-        }
-      ]
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Course Content — Upload & CRUD",
+      "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-course-content\"}[1m])) by (method, path)", "legendFormat": "{{method}} {{path}}", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "pink", "value": null }] },
-          "unit": "short",
-          "mappings": []
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
+        "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 24 },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 32 },
       "id": 34,
-      "options": { "reduceOptions": { "calcs": ["sum"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
-      "title": "Forum Threads Created",
-      "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(ent_http_requests_total{service=\"ms-forum-chat\", method=\"POST\", status=\"201\"})",
-          "legendFormat": "threads",
-          "refId": "A"
-        }
-      ]
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Exam Assignments — Activity",
+      "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-exam-assignment\"}[1m])) by (method)", "legendFormat": "{{method}}", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "short",
-          "mappings": []
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
+        "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 24 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 32 },
       "id": 35,
-      "options": { "reduceOptions": { "calcs": ["sum"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
-      "title": "Calendar Events Created",
-      "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(ent_http_requests_total{service=\"ms-calendar-schedule\", method=\"POST\", status=\"201\"})",
-          "legendFormat": "events",
-          "refId": "A"
-        }
-      ]
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Forum Chat — Messages & Threads",
+      "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-forum-chat\"}[1m])) by (method)", "legendFormat": "{{method}}", "refId": "A" }]
     },
+
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 },
-      "id": 104,
-      "title": "Auth Success Rate",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 },
+      "id": 500,
+      "title": "💻 Process & Resource Metrics",
       "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": false },
-          "unit": "percentunit",
-          "min": 0,
-          "max": 1
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "bytes" },
+        "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 29 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
       "id": 40,
-      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
-      "title": "Auth Core — Success Rate (2xx / total)",
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max"] } },
+      "title": "Process Memory Usage — by Service",
       "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(rate(ent_http_requests_total{service=\"ms-auth-core\", status=~\"2..\"}[5m])) / sum(rate(ent_http_requests_total{service=\"ms-auth-core\"}[5m]))",
-          "legendFormat": "success rate",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "process_resident_memory_bytes{job=~\"ms-.*\"}", "legendFormat": "{{job}}", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": false },
-          "unit": "reqps"
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 29 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
       "id": 41,
-      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
-      "title": "Gateway — Request Rate by Status Class",
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last"] } },
+      "title": "Open File Descriptors — by Service",
       "type": "timeseries",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by(status) (rate(ent_http_requests_total{service=\"ms-api-gateway\"}[5m]))",
-          "legendFormat": "HTTP {{status}}",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "process_open_fds{job=~\"ms-.*\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 49 },
+      "id": 600,
+      "title": "🔥 HTTP Status Code Distribution",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 50 },
+      "id": 50,
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }
+      },
+      "title": "HTTP Status Codes — All Services",
+      "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total[1m])) by (status)", "legendFormat": "HTTP {{status}}", "refId": "A" }]
     }
-  ],
-  "refresh": "30s",
-  "schemaVersion": 38,
-  "tags": ["ent", "platform", "microservices"],
-  "templating": {
-    "list": [
-      {
-        "current": {},
-        "hide": 0,
-        "includeAll": false,
-        "name": "DS_PROMETHEUS",
-        "options": [],
-        "query": "prometheus",
-        "refresh": 1,
-        "type": "datasource"
-      }
-    ]
-  },
-  "time": { "from": "now-1h", "to": "now" },
-  "timepicker": {},
-  "timezone": "browser",
-  "title": "ENT EST Salé — Platform Overview",
-  "uid": "ent-platform-overview",
-  "version": 1
+  ]
 }

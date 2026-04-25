@@ -26,6 +26,9 @@ OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "120"))
 AI_MAX_TOKENS = int(os.getenv("AI_MAX_TOKENS", "2048"))
 AI_RATE_LIMIT_PER_MIN = int(os.getenv("AI_RATE_LIMIT_PER_MIN", "20"))
 AI_TIMEOUT_SECONDS = int(os.getenv("AI_TIMEOUT_SECONDS", "8"))
+CALENDAR_BASE_URL = os.getenv("CALENDAR_BASE_URL", "http://ms-calendar-schedule:8000")
+EXAM_BASE_URL = os.getenv("EXAM_BASE_URL", "http://ms-exam-assignment:8000")
+NOTIFICATION_BASE_URL = os.getenv("NOTIFICATION_BASE_URL", "http://ms-notification:8000")
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://ent:ChangeMe_123!@rabbitmq:5672/")
 EVENTS_EXCHANGE = os.getenv("EVENTS_EXCHANGE", "ent.events.topic")
@@ -232,12 +235,68 @@ async def _call_ollama(prompt: str, system: str | None = None) -> dict[str, Any]
 
 
 def _build_context_for_role(role: str) -> str:
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     role_context = {
-        "admin": "You are an AI assistant for an ENT (Espace Numérique de Travail) platform for EST Salé university. The user is an administrator. You can help with system management, user management, and reporting.",
-        "teacher": "You are an AI assistant for an ENT (Espace Numérique de Travail) platform for EST Salé university. The user is a teacher. You can help with course management, student interaction, and academic tasks.",
-        "student": "You are an AI assistant for an ENT (Espace Numérique de Travail) platform for EST Salé university. The user is a student. You can help with course content, assignments, and academic questions.",
+        "admin": f"You are ENT Assistant, the AI assistant for ENT EST Salé university platform. Today is {today}. The user is an administrator. You help with system management, user management, statistics, and reporting. Be concise and professional.",
+        "teacher": f"You are ENT Assistant, the AI assistant for ENT EST Salé university platform. Today is {today}. The user is a teacher. You help with course management, assignment creation, student grading, and academic planning. Be concise and professional.",
+        "student": f"You are ENT Assistant, the AI assistant for ENT EST Salé university platform. Today is {today}. The user is a student. You help with course content, upcoming assignments, exam schedules, grades, and academic questions. Be concise, friendly, and supportive.",
     }
     return role_context.get(role, role_context["student"])
+
+
+async def _fetch_user_db_context(authorization: str | None, user_id: str, role: str) -> str:
+    """Fetch user-specific data (assignments, calendar events) to enrich AI context."""
+    context_parts: list[str] = []
+    now = datetime.now(timezone.utc)
+    headers = {"Authorization": authorization} if authorization else {}
+
+    # Fetch upcoming assignments
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                f"{EXAM_BASE_URL}/assignments",
+                headers=headers,
+                params={"status": "published"},
+            )
+            if resp.status_code == 200:
+                assignments = resp.json()
+                if assignments:
+                    upcoming = []
+                    for a in assignments[:10]:
+                        due = a.get("due_date", "")
+                        title = a.get("title", "Untitled")
+                        module = a.get("module_code", "")
+                        upcoming.append(f"- {title} ({module}) due: {due}")
+                    if upcoming:
+                        context_parts.append("UPCOMING ASSIGNMENTS:\n" + "\n".join(upcoming))
+    except Exception:
+        pass
+
+    # Fetch calendar events for current month
+    try:
+        month_str = now.strftime("%Y-%m")
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                f"{CALENDAR_BASE_URL}/calendar/events",
+                headers=headers,
+                params={"month": month_str},
+            )
+            if resp.status_code == 200:
+                events = resp.json()
+                if events:
+                    event_lines = []
+                    for e in events[:10]:
+                        t = e.get("title", "")
+                        et = e.get("event_type", "")
+                        start = e.get("start_time", "")
+                        mod = e.get("module_code", "")
+                        event_lines.append(f"- [{et}] {t} ({mod}) at {start}")
+                    if event_lines:
+                        context_parts.append(f"CALENDAR EVENTS THIS MONTH ({month_str}):\n" + "\n".join(event_lines))
+    except Exception:
+        pass
+
+    return "\n\n".join(context_parts)
 
 
 # ── RabbitMQ Consumer ──────────────────────────────────────────────────────────
@@ -361,13 +420,23 @@ async def chat(
     }))
 
     role_context = _build_context_for_role(payload.role)
+
+    # Fetch live DB context (assignments, calendar) for this user
+    db_context = await _fetch_user_db_context(authorization, payload.user_id, payload.role)
+
     context_info = ""
     if payload.context_refs:
         for ref in payload.context_refs:
             if ref in context_store:
-                context_info += f"\nContext: {json.dumps(context_store[ref])}"
+                context_info += f"\nPlatform context: {json.dumps(context_store[ref])}"
 
-    full_prompt = f"{role_context}{context_info}\n\nUser question: {payload.question}\n\nAnswer:"
+    system_prompt = role_context
+    if db_context:
+        system_prompt += f"\n\nCURRENT USER DATA FROM DATABASE:\n{db_context}"
+    if context_info:
+        system_prompt += context_info
+
+    full_prompt = f"{system_prompt}\n\nUser question: {payload.question}\n\nAnswer:"
 
     try:
         response = await _call_ollama(full_prompt)

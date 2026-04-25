@@ -16,14 +16,15 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8008',
         changeOrigin: true,
-        onProxyReq: (proxyReq, req) => {
-          const auth = req.headers['authorization']
-          if (auth) proxyReq.setHeader('authorization', auth)
-        },
       },
       '/realms': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+      },
+      '/chat': {
+        target: 'ws://localhost:8016',
+        changeOrigin: true,
+        ws: true,
       },
     },
   },
