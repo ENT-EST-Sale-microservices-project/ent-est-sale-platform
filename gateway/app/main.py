@@ -21,6 +21,8 @@ NOTIFICATION_BASE_URL = os.getenv("GATEWAY_NOTIFICATION_URL", "http://ms-notific
 CALENDAR_BASE_URL = os.getenv("GATEWAY_CALENDAR_URL", "http://ms-calendar-schedule:8000")
 FORUM_BASE_URL = os.getenv("GATEWAY_FORUM_URL", "http://ms-forum-chat:8000")
 EXAM_BASE_URL = os.getenv("GATEWAY_EXAM_URL", "http://ms-exam-assignment:8000")
+AI_BASE_URL = os.getenv("GATEWAY_AI_URL", "http://ms-ai-assistant:8000")
+AI_TIMEOUT_SECONDS = float(os.getenv("GATEWAY_AI_TIMEOUT_SECONDS", "180"))
 
 CORS_ORIGINS = [
     origin.strip()
@@ -59,20 +61,21 @@ def _unauthorized(detail: str) -> HTTPException:
 async def _request_downstream(
     method: str,
     url: str,
-    *,
     headers: dict[str, str] | None = None,
-    json_payload: Any = None,
-    files: Any = None,
-    params: dict[str, Any] | None = None,
-    service_name: str,
+    json_payload: dict[str, Any] | None = None,
+    files: dict[str, Any] | None = None,
+    params: dict[str, str] | None = None,
+    service_name: str = "unknown",
+    timeout: float | None = None,
 ) -> httpx.Response:
+    timeout_value = timeout if timeout is not None else REQUEST_TIMEOUT_SECONDS
     attempts = IDEMPOTENT_RETRIES + 1 if method.upper() == "GET" else 1
     backoff = 0.15
     last_exc: Exception | None = None
 
     for attempt in range(1, attempts + 1):
         try:
-            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+            async with httpx.AsyncClient(timeout=timeout_value) as client:
                 return await client.request(
                     method=method,
                     url=url,
@@ -923,4 +926,75 @@ async def gateway_grade_submission(
     )
     if resp.status_code >= 400:
         raise _map_downstream_error(resp, "exam")
+    return resp.json()
+
+
+# ── AI Assistant routes ─────────────────────────────────────────────────────────
+
+@app.get("/api/ai/health", tags=["ai-assistant"])
+async def gateway_ai_health() -> Any:
+    resp = await _request_downstream(
+        "GET",
+        f"{AI_BASE_URL}/ai/health",
+        service_name="ai-assistant",
+    )
+    if resp.status_code >= 400:
+        raise _map_downstream_error(resp, "ai-assistant")
+    return resp.json()
+
+
+@app.post("/api/ai/chat", tags=["ai-assistant"])
+async def gateway_ai_chat(
+    payload: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    _: dict[str, Any] = Depends(verify_jwt_and_get_claims),
+) -> Any:
+    resp = await _request_downstream(
+        "POST",
+        f"{AI_BASE_URL}/ai/chat",
+        json_payload=payload,
+        headers={"Authorization": authorization or ""},
+        service_name="ai-assistant",
+        timeout=AI_TIMEOUT_SECONDS,
+    )
+    if resp.status_code >= 400:
+        raise _map_downstream_error(resp, "ai-assistant")
+    return resp.json()
+
+
+@app.post("/api/ai/summarize", tags=["ai-assistant"])
+async def gateway_ai_summarize(
+    payload: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    _: dict[str, Any] = Depends(verify_jwt_and_get_claims),
+) -> Any:
+    resp = await _request_downstream(
+        "POST",
+        f"{AI_BASE_URL}/ai/summarize",
+        json_payload=payload,
+        headers={"Authorization": authorization or ""},
+        service_name="ai-assistant",
+        timeout=AI_TIMEOUT_SECONDS,
+    )
+    if resp.status_code >= 400:
+        raise _map_downstream_error(resp, "ai-assistant")
+    return resp.json()
+
+
+@app.post("/api/ai/faq/generate", tags=["ai-assistant"])
+async def gateway_ai_faq_generate(
+    payload: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    _: dict[str, Any] = Depends(verify_jwt_and_get_claims),
+) -> Any:
+    resp = await _request_downstream(
+        "POST",
+        f"{AI_BASE_URL}/ai/faq/generate",
+        json_payload=payload,
+        headers={"Authorization": authorization or ""},
+        service_name="ai-assistant",
+        timeout=AI_TIMEOUT_SECONDS,
+    )
+    if resp.status_code >= 400:
+        raise _map_downstream_error(resp, "ai-assistant")
     return resp.json()

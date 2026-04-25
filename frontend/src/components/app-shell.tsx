@@ -28,6 +28,7 @@ import {
   MessageSquare,
   Moon,
   ShieldCheck,
+  Sparkles,
   Sun,
   User,
 } from 'lucide-react'
@@ -41,6 +42,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, roles: [] },
+  { to: '/app/assistant', label: 'AI Assistant', icon: Sparkles, roles: [] },
   { to: '/app/admin', label: 'User Management', icon: ShieldCheck, roles: ['admin'] },
   { to: '/app/teacher', label: 'Course Studio', icon: CloudUpload, roles: ['teacher', 'admin'] },
   { to: '/app/student', label: 'Course Catalog', icon: BookOpenText, roles: ['student'] },

@@ -1,2 +1,1 @@
-"""MS-Identity-Admin package."""
-
+# intentionally empty
