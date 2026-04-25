@@ -1,0 +1,49 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: ms-auth-core
+    static_configs:
+      - targets: ['ms-auth-core:8000']
+    metrics_path: /metrics
+
+  - job_name: ms-identity-admin
+    static_configs:
+      - targets: ['ms-identity-admin:8000']
+    metrics_path: /metrics
+
+  - job_name: ms-api-gateway
+    static_configs:
+      - targets: ['ms-api-gateway:8000']
+    metrics_path: /metrics
+
+  - job_name: ms-course-content
+    static_configs:
+      - targets: ['ms-course-content:8000']
+    metrics_path: /metrics
+
+  - job_name: ms-course-access
+    static_configs:
+      - targets: ['ms-course-access:8000']
+    metrics_path: /metrics
+
+  - job_name: ms-notification
+    static_configs:
+      - targets: ['ms-notification:8000']
+    metrics_path: /metrics
+
+  - job_name: ms-calendar-schedule
+    static_configs:
+      - targets: ['ms-calendar-schedule:8000']
+    metrics_path: /metrics
+
+  - job_name: ms-forum-chat
+    static_configs:
+      - targets: ['ms-forum-chat:8000']
+    metrics_path: /metrics
+
+  - job_name: ms-exam-assignment
+    static_configs:
+      - targets: ['ms-exam-assignment:8000']
+    metrics_path: /metrics

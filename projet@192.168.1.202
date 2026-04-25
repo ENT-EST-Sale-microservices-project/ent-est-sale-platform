@@ -270,9 +270,6 @@ services:
       GATEWAY_COURSE_ACCESS_URL: ${GATEWAY_COURSE_ACCESS_URL:-http://ms-course-access:8000}
       GATEWAY_IDENTITY_ADMIN_URL: ${GATEWAY_IDENTITY_ADMIN_URL:-http://ms-identity-admin:8000}
       GATEWAY_NOTIFICATION_URL: ${GATEWAY_NOTIFICATION_URL:-http://ms-notification:8000}
-      GATEWAY_CALENDAR_URL: ${GATEWAY_CALENDAR_URL:-http://ms-calendar-schedule:8000}
-      GATEWAY_FORUM_URL: ${GATEWAY_FORUM_URL:-http://ms-forum-chat:8000}
-      GATEWAY_EXAM_URL: ${GATEWAY_EXAM_URL:-http://ms-exam-assignment:8000}
       TZ: ${TZ:-Africa/Casablanca}
     ports:
       - "${MS_API_GATEWAY_PORT:-8008}:8000"
@@ -297,12 +294,6 @@ services:
       ms-course-access:
         condition: service_healthy
       ms-notification:
-        condition: service_healthy
-      ms-calendar-schedule:
-        condition: service_healthy
-      ms-forum-chat:
-        condition: service_healthy
-      ms-exam-assignment:
         condition: service_healthy
 
   ms-identity-admin:
@@ -482,145 +473,6 @@ services:
       mailpit:
         condition: service_started
 
-  ms-exam-assignment:
-    <<: *common
-    build:
-      context: ./services/ms-exam-assignment
-      dockerfile: Dockerfile
-    container_name: ent-ms-exam-assignment
-    environment:
-      AUTH_CORE_BASE_URL: ${AUTH_CORE_BASE_URL:-http://ms-auth-core:8000}
-      EXAM_TIMEOUT_SECONDS: ${EXAM_TIMEOUT_SECONDS:-8}
-      EXAM_TEACHER_ROLES: ${EXAM_TEACHER_ROLES:-teacher,admin}
-      EXAM_STUDENT_ROLES: ${EXAM_STUDENT_ROLES:-student}
-      EXAM_ASSIGNMENTS_TABLE: ${EXAM_ASSIGNMENTS_TABLE:-assignments}
-      EXAM_SUBMISSIONS_TABLE: ${EXAM_SUBMISSIONS_TABLE:-submissions}
-      EXAM_SUBMISSIONS_BY_ASSIGNMENT_TABLE: ${EXAM_SUBMISSIONS_BY_ASSIGNMENT_TABLE:-submissions_by_assignment}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
-      MINIO_SIGNING_ENDPOINT: ${MINIO_SIGNING_ENDPOINT:-http://localhost:9002}
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ChangeMe_123!}
-      MINIO_SUBMISSIONS_BUCKET: ${MINIO_SUBMISSIONS_BUCKET:-ent-uploads}
-      RABBITMQ_URL: ${NOTIFICATION_RABBITMQ_URL:-amqp://ent:ChangeMe_123!@rabbitmq:5672/}
-      EVENTS_EXCHANGE: ${EVENTS_EXCHANGE:-ent.events.topic}
-      CASSANDRA_CONTACT_POINTS: ${CASSANDRA_CONTACT_POINTS:-cassandra}
-      CASSANDRA_PORT: ${CASSANDRA_PORT:-9042}
-      CASSANDRA_USERNAME: ${CASSANDRA_USERNAME:-cassandra}
-      CASSANDRA_PASSWORD: ${CASSANDRA_PASSWORD:-ChangeMe_123!}
-      CASSANDRA_KEYSPACE: ${CASSANDRA_KEYSPACE:-ent_est}
-      TZ: ${TZ:-Africa/Casablanca}
-    ports:
-      - "${MS_EXAM_PORT:-8017}:8000"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/exams/health', timeout=3)",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    depends_on:
-      ms-auth-core:
-        condition: service_healthy
-      cassandra:
-        condition: service_healthy
-      cassandra-init:
-        condition: service_completed_successfully
-      rabbitmq:
-        condition: service_healthy
-      minio:
-        condition: service_started
-      minio-init:
-        condition: service_completed_successfully
-
-  ms-forum-chat:
-    <<: *common
-    build:
-      context: ./services/ms-forum-chat
-      dockerfile: Dockerfile
-    container_name: ent-ms-forum-chat
-    environment:
-      AUTH_CORE_BASE_URL: ${AUTH_CORE_BASE_URL:-http://ms-auth-core:8000}
-      FORUM_TIMEOUT_SECONDS: ${FORUM_TIMEOUT_SECONDS:-8}
-      FORUM_THREADS_TABLE: ${FORUM_THREADS_TABLE:-forum_threads}
-      FORUM_MESSAGES_TABLE: ${FORUM_MESSAGES_TABLE:-forum_messages}
-      FORUM_COUNTERS_TABLE: ${FORUM_COUNTERS_TABLE:-forum_thread_counters}
-      RABBITMQ_URL: ${NOTIFICATION_RABBITMQ_URL:-amqp://ent:ChangeMe_123!@rabbitmq:5672/}
-      EVENTS_EXCHANGE: ${EVENTS_EXCHANGE:-ent.events.topic}
-      CASSANDRA_CONTACT_POINTS: ${CASSANDRA_CONTACT_POINTS:-cassandra}
-      CASSANDRA_PORT: ${CASSANDRA_PORT:-9042}
-      CASSANDRA_USERNAME: ${CASSANDRA_USERNAME:-cassandra}
-      CASSANDRA_PASSWORD: ${CASSANDRA_PASSWORD:-ChangeMe_123!}
-      CASSANDRA_KEYSPACE: ${CASSANDRA_KEYSPACE:-ent_est}
-      TZ: ${TZ:-Africa/Casablanca}
-    ports:
-      - "${MS_FORUM_PORT:-8016}:8000"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/forum/health', timeout=3)",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    depends_on:
-      ms-auth-core:
-        condition: service_healthy
-      cassandra:
-        condition: service_healthy
-      cassandra-init:
-        condition: service_completed_successfully
-      rabbitmq:
-        condition: service_healthy
-
-  ms-calendar-schedule:
-    <<: *common
-    build:
-      context: ./services/ms-calendar-schedule
-      dockerfile: Dockerfile
-    container_name: ent-ms-calendar-schedule
-    environment:
-      AUTH_CORE_BASE_URL: ${AUTH_CORE_BASE_URL:-http://ms-auth-core:8000}
-      CALENDAR_TIMEOUT_SECONDS: ${CALENDAR_TIMEOUT_SECONDS:-8}
-      CALENDAR_WRITE_ROLES: ${CALENDAR_WRITE_ROLES:-teacher,admin}
-      CALENDAR_EVENTS_TABLE: ${CALENDAR_EVENTS_TABLE:-calendar_events}
-      RABBITMQ_URL: ${NOTIFICATION_RABBITMQ_URL:-amqp://ent:ChangeMe_123!@rabbitmq:5672/}
-      EVENTS_EXCHANGE: ${EVENTS_EXCHANGE:-ent.events.topic}
-      CASSANDRA_CONTACT_POINTS: ${CASSANDRA_CONTACT_POINTS:-cassandra}
-      CASSANDRA_PORT: ${CASSANDRA_PORT:-9042}
-      CASSANDRA_USERNAME: ${CASSANDRA_USERNAME:-cassandra}
-      CASSANDRA_PASSWORD: ${CASSANDRA_PASSWORD:-ChangeMe_123!}
-      CASSANDRA_KEYSPACE: ${CASSANDRA_KEYSPACE:-ent_est}
-      TZ: ${TZ:-Africa/Casablanca}
-    ports:
-      - "${MS_CALENDAR_PORT:-8015}:8000"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/calendar/health', timeout=3)",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    depends_on:
-      ms-auth-core:
-        condition: service_healthy
-      cassandra:
-        condition: service_healthy
-      cassandra-init:
-        condition: service_completed_successfully
-      rabbitmq:
-        condition: service_healthy
-
   frontend:
     <<: *common
     build:
@@ -635,38 +487,6 @@ services:
       keycloak:
         condition: service_started
 
-  prometheus:
-    <<: *common
-    image: prom/prometheus:latest
-    container_name: ent-prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./infra/compose/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-    restart: unless-stopped
-
-  grafana:
-    <<: *common
-    image: grafana/grafana:latest
-    container_name: ent-grafana
-    ports:
-      - "${GRAFANA_PORT:-3001}:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-ChangeMe_123!}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./infra/compose/grafana/provisioning:/etc/grafana/provisioning:ro
-    depends_on:
-      - prometheus
-    restart: unless-stopped
-
 networks:
   ent-network:
     name: ent-network
@@ -678,4 +498,3 @@ volumes:
   minio_data:
   cassandra_data:
   redis_data:
-  grafana_data:
