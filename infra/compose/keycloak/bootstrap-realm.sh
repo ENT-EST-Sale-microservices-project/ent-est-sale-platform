@@ -35,9 +35,25 @@ HTTP_CODE=$(curl -sS -o /tmp/realm-create-response.txt -w '%{http_code}' \
   -H 'Content-Type: application/json' \
   --data-binary @/config/realm.json)
 
-if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "409" ]; then
-  printf '[keycloak-bootstrap] realm bootstrap successful (HTTP %s)\n' "$HTTP_CODE"
+if [ "$HTTP_CODE" = "201" ]; then
+  printf '[keycloak-bootstrap] realm created successfully (HTTP 201)\n'
   exit 0
+fi
+
+if [ "$HTTP_CODE" = "409" ]; then
+  printf '[keycloak-bootstrap] realm exists, applying updates...\n'
+  PUT_CODE=$(curl -sS -o /tmp/realm-put-response.txt -w '%{http_code}' \
+    -X PUT "$ADMIN_REALMS_URL/$REALM_NAME" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -H 'Content-Type: application/json' \
+    --data-binary @/config/realm.json)
+  if [ "$PUT_CODE" = "204" ] || [ "$PUT_CODE" = "200" ]; then
+    printf '[keycloak-bootstrap] realm updated successfully (HTTP %s)\n' "$PUT_CODE"
+    exit 0
+  fi
+  printf '[keycloak-bootstrap] realm update failed (HTTP %s)\n' "$PUT_CODE" >&2
+  cat /tmp/realm-put-response.txt >&2 || true
+  exit 1
 fi
 
 printf '[keycloak-bootstrap] unexpected HTTP code: %s\n' "$HTTP_CODE" >&2

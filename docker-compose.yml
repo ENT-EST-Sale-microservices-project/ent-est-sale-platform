@@ -48,7 +48,6 @@ services:
       KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME:-keycloak}
       KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
       KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-ChangeMe_123!}
-      KC_PROXY_HEADERS: xforwarded
       JAVA_OPTS_APPEND: -XX:+UseContainerSupport -XX:MaxRAMPercentage=50.0
       TZ: ${TZ:-Africa/Casablanca}
     ports:
