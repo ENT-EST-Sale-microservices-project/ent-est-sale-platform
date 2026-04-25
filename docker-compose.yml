@@ -38,7 +38,7 @@ services:
       - --http-port=8080
       - --health-enabled=true
       - --metrics-enabled=true
-      - --hostname=${KEYCLOAK_HOSTNAME:-localhost}
+      - --hostname-strict=false
     environment:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-ChangeMe_123!}
@@ -223,6 +223,39 @@ services:
       - "${MAILPIT_SMTP_PORT:-1025}:1025"
       - "${MAILPIT_UI_PORT:-8025}:8025"
 
+  ollama:
+    <<: *common
+    image: ollama/ollama:latest
+    container_name: ent-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    profiles:
+      - ai
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: ent-ollama-pull
+    volumes:
+      - ollama_data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "echo 'Waiting for Ollama to be ready...' && \
+      sleep 5 && \
+      echo 'Pulling llama3 model...' && \
+      ollama pull llama3 && \
+      echo 'Llama3 model ready!'"
+    profiles:
+      - ai
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_started
+
   ms-auth-core:
     <<: *common
     build:
@@ -273,6 +306,8 @@ services:
       GATEWAY_CALENDAR_URL: ${GATEWAY_CALENDAR_URL:-http://ms-calendar-schedule:8000}
       GATEWAY_FORUM_URL: ${GATEWAY_FORUM_URL:-http://ms-forum-chat:8000}
       GATEWAY_EXAM_URL: ${GATEWAY_EXAM_URL:-http://ms-exam-assignment:8000}
+      GATEWAY_AI_URL: ${GATEWAY_AI_URL:-http://ms-ai-assistant:8000}
+      GATEWAY_CORS_ORIGINS: ${GATEWAY_CORS_ORIGINS:-*}
       TZ: ${TZ:-Africa/Casablanca}
     ports:
       - "${MS_API_GATEWAY_PORT:-8008}:8000"
@@ -303,6 +338,8 @@ services:
       ms-forum-chat:
         condition: service_healthy
       ms-exam-assignment:
+        condition: service_healthy
+      ms-ai-assistant:
         condition: service_healthy
 
   ms-identity-admin:
@@ -621,6 +658,47 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  ms-ai-assistant:
+    <<: *common
+    build:
+      context: ./services/ms-ai-assistant
+      dockerfile: Dockerfile
+    container_name: ent-ms-ai-assistant
+    environment:
+      AUTH_CORE_BASE_URL: ${AUTH_CORE_BASE_URL:-http://ms-auth-core:8000}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-120}
+      AI_MAX_TOKENS: ${AI_MAX_TOKENS:-2048}
+      AI_RATE_LIMIT_PER_MIN: ${AI_RATE_LIMIT_PER_MIN:-20}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-8}
+      RABBITMQ_URL: ${NOTIFICATION_RABBITMQ_URL:-amqp://ent:ChangeMe_123!@rabbitmq:5672/}
+      EVENTS_EXCHANGE: ${EVENTS_EXCHANGE:-ent.events.topic}
+      AI_QUEUE: ${AI_QUEUE:-q.ai.context}
+      CALENDAR_BASE_URL: ${CALENDAR_BASE_URL:-http://ms-calendar-schedule:8000}
+      EXAM_BASE_URL: ${EXAM_BASE_URL:-http://ms-exam-assignment:8000}
+      NOTIFICATION_BASE_URL: ${NOTIFICATION_BASE_URL:-http://ms-notification:8000}
+      TZ: ${TZ:-Africa/Casablanca}
+    ports:
+      - "${MS_AI_PORT:-8018}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ai/health', timeout=5)",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 30s
+    depends_on:
+      ms-auth-core:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
   frontend:
     <<: *common
     build:
@@ -628,7 +706,7 @@ services:
       dockerfile: Dockerfile
     container_name: ent-frontend
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_PORT:-80}:80"
     depends_on:
       ms-api-gateway:
         condition: service_healthy
@@ -644,10 +722,10 @@ services:
     volumes:
       - ./infra/compose/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
     restart: unless-stopped
 
   grafana:
@@ -679,3 +757,4 @@ volumes:
   cassandra_data:
   redis_data:
   grafana_data:
+  ollama_data:

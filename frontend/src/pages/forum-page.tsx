@@ -39,7 +39,8 @@ type WsMessage = {
 }
 
 const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-const WS_BASE = `${protocol}://${window.location.hostname}:8016`
+// WebSocket proxied through nginx on same host/port — no direct service port needed
+const WS_BASE = `${protocol}://${window.location.host}`
 
 export function ForumPage() {
   const { apiFetch, session } = useAuth()

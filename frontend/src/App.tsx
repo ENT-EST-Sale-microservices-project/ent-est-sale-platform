@@ -13,6 +13,7 @@ import { UnauthorizedPage } from '@/pages/unauthorized-page'
 import { CalendarPage } from '@/pages/calendar-page'
 import { ForumPage } from '@/pages/forum-page'
 import { ExamPage } from '@/pages/exam-page'
+import { AssistantPage } from '@/pages/assistant-page'
 
 export default function App() {
   return (
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="forum" element={<ForumPage />} />
         <Route path="exams" element={<ExamPage />} />
+        <Route path="assistant" element={<AssistantPage />} />
       </Route>
 
       <Route path="*" element={<NotFoundPage />} />

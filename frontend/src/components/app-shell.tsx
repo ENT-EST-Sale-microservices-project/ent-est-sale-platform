@@ -28,6 +28,7 @@ import {
   MessageSquare,
   Moon,
   ShieldCheck,
+  Sparkles,
   Sun,
   User,
 } from 'lucide-react'
@@ -41,6 +42,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, roles: [] },
+  { to: '/app/assistant', label: 'AI Assistant', icon: Sparkles, roles: [] },
   { to: '/app/admin', label: 'User Management', icon: ShieldCheck, roles: ['admin'] },
   { to: '/app/teacher', label: 'Course Studio', icon: CloudUpload, roles: ['teacher', 'admin'] },
   { to: '/app/student', label: 'Course Catalog', icon: BookOpenText, roles: ['student'] },
@@ -184,7 +186,7 @@ export function AppShell() {
   )
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen overflow-hidden bg-background">
       {/* Mobile overlay */}
       {mobileOpen && (
         <div
@@ -193,9 +195,9 @@ export function AppShell() {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar — always fixed height, never grows */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border/50 bg-card/95 backdrop-blur-xl transition-all duration-300 lg:relative lg:z-auto ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-border/50 bg-card/95 backdrop-blur-xl transition-all duration-300 lg:static lg:z-auto lg:flex lg:shrink-0 ${
           sidebarOpen ? 'w-64' : 'w-[72px]'
         } ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
@@ -210,10 +212,10 @@ export function AppShell() {
         </button>
       </aside>
 
-      {/* Main content */}
-      <div className="flex flex-1 flex-col min-w-0">
+      {/* Main area — fills remaining width, has its own scroll */}
+      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/50 bg-card/80 px-4 backdrop-blur-xl sm:px-6">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-border/50 bg-card/80 px-4 backdrop-blur-xl sm:px-6">
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"
@@ -296,8 +298,8 @@ export function AppShell() {
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+        {/* Page content — scrolls independently */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <div className="mx-auto w-full max-w-7xl">
             <Outlet />
           </div>
