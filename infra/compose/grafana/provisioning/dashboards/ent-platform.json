@@ -23,7 +23,7 @@
     "list": [
       {
         "current": {},
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
         "definition": "label_values(ent_http_requests_total, service)",
         "hide": 0,
         "includeAll": true,
@@ -52,7 +52,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -70,10 +70,10 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
       "title": "Total RPS",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total[5m]))", "legendFormat": "RPS", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "sum(rate(ent_http_requests_total[5m]))", "legendFormat": "RPS", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -91,10 +91,10 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
       "title": "Error Rate",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(ent_http_requests_total[5m]))", "legendFormat": "Error Rate", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "sum(rate(ent_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(ent_http_requests_total[5m]))", "legendFormat": "Error Rate", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -112,10 +112,10 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
       "title": "P99 Latency",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "histogram_quantile(0.99, sum(rate(ent_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P99", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "histogram_quantile(0.99, sum(rate(ent_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P99", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -133,10 +133,10 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
       "title": "P50 Latency",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "histogram_quantile(0.50, sum(rate(ent_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P50", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "histogram_quantile(0.50, sum(rate(ent_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P50", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -154,10 +154,10 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
       "title": "Active Services",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "count(up{job=~\"ms-.*\"} == 1)", "legendFormat": "Up", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "count(up{job=~\"ms-.*\"} == 1)", "legendFormat": "Up", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -174,7 +174,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none" },
       "title": "Down Services",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "count(up{job=~\"ms-.*\"} == 0) or vector(0)", "legendFormat": "Down", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "count(up{job=~\"ms-.*\"} == 0) or vector(0)", "legendFormat": "Down", "refId": "A" }]
     },
 
     {
@@ -185,7 +185,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
         "overrides": []
@@ -195,10 +195,10 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max"] } },
       "title": "Requests Per Second — by Service",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total[1m])) by (service)", "legendFormat": "{{service}}", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "sum(rate(ent_http_requests_total[1m])) by (service)", "legendFormat": "{{service}}", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
         "overrides": []
@@ -208,7 +208,7 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max"] } },
       "title": "HTTP 5xx Errors — by Service",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{status=~\"5..\"}[1m])) by (service)", "legendFormat": "{{service}}", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "sum(rate(ent_http_requests_total{status=~\"5..\"}[1m])) by (service)", "legendFormat": "{{service}}", "refId": "A" }]
     },
 
     {
@@ -219,7 +219,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" },
         "overrides": []
@@ -229,10 +229,10 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "mean", "max"] } },
       "title": "P99 Request Latency — by Service",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "histogram_quantile(0.99, sum(rate(ent_http_request_duration_seconds_bucket[5m])) by (le, service))", "legendFormat": "{{service}} P99", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "histogram_quantile(0.99, sum(rate(ent_http_request_duration_seconds_bucket[5m])) by (le, service))", "legendFormat": "{{service}} P99", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" },
         "overrides": []
@@ -242,7 +242,7 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "mean", "max"] } },
       "title": "P50 Request Latency — by Service",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "histogram_quantile(0.50, sum(rate(ent_http_request_duration_seconds_bucket[5m])) by (le, service))", "legendFormat": "{{service}} P50", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "histogram_quantile(0.50, sum(rate(ent_http_request_duration_seconds_bucket[5m])) by (le, service))", "legendFormat": "{{service}} P50", "refId": "A" }]
     },
 
     {
@@ -253,7 +253,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
         "overrides": []
@@ -263,10 +263,10 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
       "title": "Gateway — RPS by Route",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-api-gateway\"}[1m])) by (method, path)", "legendFormat": "{{method}} {{path}}", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-api-gateway\"}[1m])) by (method, path)", "legendFormat": "{{method}} {{path}}", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
         "overrides": []
@@ -276,10 +276,10 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
       "title": "Auth Core — Validation Rate",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-auth-core\"}[1m])) by (status)", "legendFormat": "HTTP {{status}}", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-auth-core\"}[1m])) by (status)", "legendFormat": "HTTP {{status}}", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
         "overrides": []
@@ -289,10 +289,10 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
       "title": "Identity Admin — CRUD Operations",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-identity-admin\"}[1m])) by (method)", "legendFormat": "{{method}}", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-identity-admin\"}[1m])) by (method)", "legendFormat": "{{method}}", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
         "overrides": []
@@ -302,10 +302,10 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
       "title": "Course Content — Upload & CRUD",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-course-content\"}[1m])) by (method, path)", "legendFormat": "{{method}} {{path}}", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-course-content\"}[1m])) by (method, path)", "legendFormat": "{{method}} {{path}}", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
         "overrides": []
@@ -315,10 +315,10 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
       "title": "Exam Assignments — Activity",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-exam-assignment\"}[1m])) by (method)", "legendFormat": "{{method}}", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-exam-assignment\"}[1m])) by (method)", "legendFormat": "{{method}}", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
         "overrides": []
@@ -328,7 +328,7 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
       "title": "Forum Chat — Messages & Threads",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-forum-chat\"}[1m])) by (method)", "legendFormat": "{{method}}", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "sum(rate(ent_http_requests_total{service=\"ms-forum-chat\"}[1m])) by (method)", "legendFormat": "{{method}}", "refId": "A" }]
     },
 
     {
@@ -339,7 +339,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "bytes" },
         "overrides": []
@@ -349,10 +349,10 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max"] } },
       "title": "Process Memory Usage — by Service",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "process_resident_memory_bytes{job=~\"ms-.*\"}", "legendFormat": "{{job}}", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "process_resident_memory_bytes{job=~\"ms-.*\"}", "legendFormat": "{{job}}", "refId": "A" }]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
         "overrides": []
@@ -362,7 +362,7 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last"] } },
       "title": "Open File Descriptors — by Service",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "process_open_fds{job=~\"ms-.*\"}", "legendFormat": "{{job}}", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "process_open_fds{job=~\"ms-.*\"}", "legendFormat": "{{job}}", "refId": "A" }]
     },
 
     {
@@ -373,7 +373,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
         "overrides": []
@@ -386,7 +386,7 @@
       },
       "title": "HTTP Status Codes — All Services",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(ent_http_requests_total[1m])) by (status)", "legendFormat": "HTTP {{status}}", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "DS_PROMETHEUS" }, "expr": "sum(rate(ent_http_requests_total[1m])) by (status)", "legendFormat": "HTTP {{status}}", "refId": "A" }]
     }
   ]
 }
